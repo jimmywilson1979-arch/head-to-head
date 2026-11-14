@@ -275,7 +275,7 @@
     },
     space: {
       id: "space", name: "Space", icon: "🪐",
-      note: "Temperature is the average at the surface (or cloud tops). Moons orbit at their planet's distance from the Sun. Moon counts as of 2026, and still rising!",
+      note: "Temperature is the average at the surface (or cloud tops). Moons orbit at their planet's distance from the Sun. Moon counts as of 2026, and still rising!", img: art("space"),
       stats: [{ l: "Width", u: "km" }, { l: "Gravity", u: "m/s²" }, { l: "Temperature", u: "°C" }, { l: "From the Sun", u: "mkm" }, { l: "Moons", u: "" }],
       cards: [
         ["The Sun", "☀️", 1392700, 274, 5500, 0, 0], ["Mercury", "🌑", 4879, 3.7, 167, 58, 0], ["Venus", "🟡", 12104, 8.9, 464, 108, 0],
