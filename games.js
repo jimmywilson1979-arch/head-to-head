@@ -457,6 +457,90 @@
     return { vx: Math.round(Math.cos(a) * p * 1000) / 1000, vy: Math.round(Math.sin(a) * p * 1000) / 1000 };
   }
 
+
+  // ===== AIR HOCKEY ===== table 100 wide x 320 long. Seat 0 defends the bottom goal (y = 320), seat 1 the top (y = 0).
+  const HK = { W: 100, L: 320, GOAL: 38, PR: 5, MR: 9, TARGET: 7, MAXP: 430, PADV: 520 };
+  function hkNewPuck(seat) { return { x: HK.W / 2, y: seat === 0 ? HK.L * 0.7 : HK.L * 0.3, vx: 0, vy: 0 }; }
+  function hkClampPad(seat, x, y) {
+    const r = HK.MR, half = HK.L / 2;
+    x = Math.max(r, Math.min(HK.W - r, x));
+    y = seat === 0 ? Math.max(half + r, Math.min(HK.L - r, y)) : Math.max(r, Math.min(half - r, y));
+    return [x, y];
+  }
+  // one physics step. Returns the seat that scored, or -1. ev collects sounds: "h" hit, "w" wall
+  function hkStep(st, dt, ev) {
+    for (let i = 0; i < 2; i++) {
+      const m = st.pad[i], [tx, ty] = hkClampPad(i, m.tx, m.ty), dx = tx - m.x, dy = ty - m.y, d = Math.sqrt(dx * dx + dy * dy);
+      const mv = Math.min(d, (m.max || HK.PADV) * dt);
+      const nx = d > 1e-6 ? dx / d * mv : 0, ny = d > 1e-6 ? dy / d * mv : 0;
+      m.x += nx; m.y += ny; m.vx = nx / dt; m.vy = ny / dt;
+    }
+    const p = st.puck;
+    if (st.frozen) return -1;
+    p.vx *= 0.9985; p.vy *= 0.9985;
+    p.x += p.vx * dt; p.y += p.vy * dt;
+    const r = HK.PR;
+    hkWalls(p, ev);
+    if (p.y < -r * 2) return 0;          // in the top goal: seat 0 scores
+    if (p.y > HK.L + r * 2) return 1;    // in the bottom goal: seat 1 scores
+    for (let i = 0; i < 2; i++) {
+      const m = st.pad[i], dx = p.x - m.x, dy = p.y - m.y, d2 = dx * dx + dy * dy, rr = r + HK.MR;
+      if (d2 < rr * rr && d2 > 1e-9) {
+        const d = Math.sqrt(d2), nx = dx / d, ny = dy / d;
+        p.x = m.x + nx * rr; p.y = m.y + ny * rr;
+        const rvx = p.vx - m.vx, rvy = p.vy - m.vy, vn = rvx * nx + rvy * ny;
+        if (vn < 0) { p.vx -= 1.9 * vn * nx; p.vy -= 1.9 * vn * ny; ev && ev.push("h"); }
+        const sp = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
+        if (sp > HK.MAXP) { p.vx *= HK.MAXP / sp; p.vy *= HK.MAXP / sp; }
+        hkWalls(p, null); // a paddle can't shove the puck through the boards
+      }
+    }
+    return -1;
+  }
+  // boards with rounded corners (like a real table), and an opening for each goal
+  const CR = 18;
+  function hkWalls(p, ev) {
+    const r = HK.PR, inGoal = Math.abs(p.x - HK.W / 2) < HK.GOAL / 2 - r * .3;
+    if (p.x < r) { p.x = r; if (p.vx < 0) { p.vx = -p.vx * .9; ev && ev.push("w"); } }
+    if (p.x > HK.W - r) { p.x = HK.W - r; if (p.vx > 0) { p.vx = -p.vx * .9; ev && ev.push("w"); } }
+    if (!inGoal) {
+      if (p.y < r) { p.y = r; if (p.vy < 0) { p.vy = -p.vy * .9; ev && ev.push("w"); } }
+      if (p.y > HK.L - r) { p.y = HK.L - r; if (p.vy > 0) { p.vy = -p.vy * .9; ev && ev.push("w"); } }
+    }
+    const cx = p.x < CR ? CR : p.x > HK.W - CR ? HK.W - CR : null, cy = p.y < CR ? CR : p.y > HK.L - CR ? HK.L - CR : null;
+    if (cx != null && cy != null) {
+      const dx = p.x - cx, dy = p.y - cy, d = Math.sqrt(dx * dx + dy * dy), lim = CR - r;
+      if (d > lim && d > 1e-9) {
+        const nx = dx / d, ny = dy / d; p.x = cx + nx * lim; p.y = cy + ny * lim;
+        const vn = p.vx * nx + p.vy * ny; if (vn > 0) { p.vx -= 1.9 * vn * nx; p.vy -= 1.9 * vn * ny; ev && ev.push("w"); }
+      }
+    }
+  }
+  // where the computer wants its paddle
+  function hkAI(st, seat, level) {
+    const p = st.puck, half = HK.L / 2, mine = seat === 0 ? p.y > half : p.y < half;
+    const homeY = seat === 0 ? HK.L - 24 : 24, goalY = seat === 0 ? 0 : HK.L;
+    const lag = level === "easy" ? 0.35 : level === "medium" ? 0.15 : 0.05;
+    const px = p.x + p.vx * lag, py = p.y + p.vy * lag;
+    const comingAtMe = seat === 0 ? p.vy > 30 : p.vy < -30;
+    const mem = st.ai || (st.ai = [{ slow: 0, side: 1 }, { slow: 0, side: 1 }]), me = mem[seat];
+    const spd = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
+    me.slow = mine && spd < 25 ? me.slow + 1 : 0;
+    if (me.slow > 0 && me.slow % 90 === 0) me.side = -me.side; // stuck for a while: come at it from the other side
+    if (mine && !(comingAtMe && Math.abs(py - homeY) > 60 && level !== "hard")) {
+      const nearWall = px < 16 || px > HK.W - 16 || (seat === 0 ? py > HK.L - 18 : py < 18);
+      let ax = HK.W / 2 + (level === "hard" ? (Math.random() - .5) * 30 : 0), ay = goalY;
+      if (nearWall || me.slow > 90) { ax = HK.W / 2 + me.side * 20; ay = half; }
+      const a = Math.atan2(ay - py, ax - px), dx = Math.cos(a), dy = Math.sin(a), rr = HK.PR + HK.MR;
+      const m = st.pad[seat], rel = (m.x - px) * dx + (m.y - py) * dy;
+      if (rel < -rr * 0.6) return [px + dx * 30, py + dy * 30];          // behind it: strike through
+      const side = me.slow > 60 ? me.side : (m.x - px) * -dy + (m.y - py) * dx > 0 ? 1 : -1; // in front: go round it
+      return [px - dx * (rr + 8) - dy * side * rr, py - dy * (rr + 8) + dx * side * rr];
+    }
+    const track = level === "easy" ? .4 : level === "medium" ? .65 : .85;
+    return [HK.W / 2 + (px - HK.W / 2) * track, homeY];
+  }
+
   // ===== THE GAME LIST =====
   // init(S): set S.board (everyone sees), S.sec (host only), S.turn (seat, or -1 when both act at once)
   // waiting(S, seat): does this seat need to act now?
@@ -637,6 +721,13 @@
         return fx;
       },
       ai: golfAI,
+    },
+    hockey: {
+      id: "hockey", name: "Air Hockey", local: false, realtime: true, HK, CR, newPuck: hkNewPuck, step: hkStep, aiTarget: hkAI, clampPad: hkClampPad,
+      init(S) { S.board = { score: [0, 0], target: HK.TARGET, serve: S.starter }; S.sec = {}; S.turn = -1; },
+      waiting: () => false,
+      move: () => false,
+      ai: () => null,
     },
     rps: {
       id: "rps", name: "Rock Paper Scissors", local: false, TARGET: 3,

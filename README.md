@@ -34,14 +34,15 @@ Hard is unbeatable at Noughts & Crosses, very strong at Connect 4 and Dots & Box
 
 - **Who Is It?** (Guess Who style) – 24 original cartoon people. Each player picks a secret person, then you take turns asking yes/no questions; the app answers and flips down everyone who doesn't match. Tap "I know who it is!" to guess – a wrong guess ends your go.
 - **Mini Golf** – 6 holes (par 18) with walls, blocks, sand and water. Drag back anywhere on the course like a catapult and let go. Take turns; both balls are on the course. Water = back where you were plus a penalty stroke; 6 shots max per hole. Lowest total wins. Every phone runs exactly the same physics, so shots play out identically everywhere.
+- **Air Hockey** – real-time, first to 7. Two ways to play: **📱📱 Phones end to end** (each phone shows its own half – put the phones top to top and the puck slides from one screen to the other) or **🖥️ Whole table** (each phone shows the full table, your goal at the bottom – use this when you're not side by side). Drag anywhere on your half to move your paddle.
 
 ## Coming next
 - More **Card Clash** themes (see ideas list)
 - **Who Is It? family edition** – your own family photos instead of cartoon faces
-- **Air hockey** – each phone is one end of the table
 
 ## How it works
 - The host phone holds the real game and sends the board to everyone; other phones send their moves to it.
+- Air hockey: the host phone runs the physics 120 times a second. The two phones try to link **directly** over Wi-Fi (WebRTC, shown as ⚡ Direct) for the lowest delay; if that isn't possible they fall back to the online connection (☁️ Online), which is slower and uses more of the free Supabase message allowance.
 - Hidden things (Battleships fleets, Rock Paper Scissors picks) are never sent out – only the board everyone is allowed to see.
 - Uses the same live connection (Supabase Realtime broadcast) as Buzz In. Nothing is stored on a server.
 - `games.js` holds the rules and computer players for each game, so new games plug in there.

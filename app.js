@@ -44,6 +44,8 @@ let REVEAL = { k: "", until: 0 };     // Rock Paper Scissors: hands shaking
 let TTSEEN = "";                      // Card Clash: last round result this phone has dismissed
 let WI = { k: "", pick: null, guessing: false, qOpen: false }; // Who Is It?: my draft pick, guess mode
 let GOLF = { anim: null, seen: "", aim: null, banner: null };   // Mini Golf: ball animation, my aim while dragging
+let HKR = null;                                                  // Air Hockey: the live table on this phone
+const FAST = { pcs: {}, dcs: {} };                               // direct phone-to-phone links (WebRTC)
 
 // ===== SOUND & BUZZ =====
 const Snd = {
@@ -114,7 +116,7 @@ function connect(room, onMsg, onStatus) {
     return { send: m => bc.postMessage(m), revive() { }, close() { bc.close(); } };
   }
   if (!window.supabase) { setTimeout(() => onStatus("lost"), 50); return { send() { }, revive() { }, close() { } }; }
-  const sb = window.supabase.createClient(SUPA_URL, SUPA_KEY, { realtime: { params: { eventsPerSecond: 20 } } });
+  const sb = window.supabase.createClient(SUPA_URL, SUPA_KEY, { realtime: { params: { eventsPerSecond: 40 } } });
   let ch = null, closed = false;
   function sub() {
     const mine = sb.channel("h2h-" + room, { config: { broadcast: { self: false } } });
@@ -234,6 +236,13 @@ function playFx(s) {
     case "no": Snd.tone(330, .12, "triangle", .12); Snd.tone(260, .16, "triangle", .12, .1); break;
     case "wrong": Snd.lose(); break;
     case "putt": case "sunk": case "splash": golfStartAnim(s); break;
+    case "goal": {
+      const me = s.seats.indexOf(ME.id);
+      if (HKR) HKR.flash = { seat: s.lastBy, until: performance.now() + 1300 };
+      if (me < 0 || s.lastBy === me) { [523, 659, 784].forEach((f, i) => Snd.tone(f, .15, "triangle", .14, i * .08)); buzz([40, 30, 40]); }
+      else { Snd.tone(220, .3, "sawtooth", .07); Snd.tone(165, .35, "sawtooth", .07, .12); buzz(160); }
+      break;
+    }
     case "right": break;
     case "tt": {
       const w = s.board.last.w, me = s.seats.indexOf(ME.id);
@@ -279,6 +288,8 @@ function startHosting(existing) {
 }
 function hostMsg(m) {
   if (!m || !S) return;
+  if (m.t === "hp") return hkPadIn(m);
+  if (m.t === "rtc") return rtcOnMsg(m);
   if (m.t === "hello") {
     let p = pl(m.pid);
     if (!p) {
@@ -312,6 +323,9 @@ function startJoining(code) {
 }
 function guestMsg(m) {
   if (!m) return;
+  if (m.t === "hk") return hkFrameIn(m);
+  if (m.t === "rtc") return rtcOnMsg(m);
+  if (m.t === "hp") return;
   if (m.t === "state") {
     const s = m.s, prev = S;
     lastSeen = Date.now();
@@ -380,7 +394,7 @@ function leave() {
   if (Date.now() - leaveArm > 3000 && MODE !== "cpu" && S && S.players.length > 1) { leaveArm = Date.now(); toast(MODE === "host" ? "Tap Leave again to end the game for everyone" : "Tap Leave again to leave"); return; }
   if (MODE === "host") { if (T) T.send({ t: "ended" }); ls.del("h2h_host"); }
   if (MODE === "guest" && T) T.send({ t: "bye", pid: ME.id });
-  clearTimeout(cpuTimer); cpuTimer = null;
+  clearTimeout(cpuTimer); cpuTimer = null; hkStop(); rtcCloseAll();
   const t = T; setTimeout(() => { if (t) t.close(); }, 300); T = null;
   S = null; MODE = "home"; conn = "off"; showQR = false; pending = null;
   if (location.search) history.replaceState(null, "", location.pathname + (LOCAL ? "?local" : ""));
@@ -441,6 +455,7 @@ function markFor(game, seat) {
   if (game === "dots") return `<svg viewBox="0 0 100 100"><rect x="14" y="14" width="72" height="72" rx="8" fill="var(--c)" opacity=".85"/></svg>`;
   if (game === "bs") return `<svg viewBox="0 0 100 100"><path d="M10 58h80l-12 18H22z" fill="var(--c)"/><rect x="34" y="40" width="30" height="16" rx="3" fill="var(--c)"/><rect x="46" y="26" width="6" height="16" fill="var(--c)"/></svg>`;
   if (game === "rps") return `<span style="font-size:24px;line-height:1">${seat ? "✋" : "✊"}</span>`;
+  if (game === "hockey") return `<svg viewBox="0 0 100 100"><circle cx="50" cy="54" r="38" fill="rgba(0,0,0,.3)"/><circle cx="50" cy="50" r="38" fill="var(--c)"/><circle cx="50" cy="50" r="20" fill="rgba(255,255,255,.4)"/><circle cx="50" cy="50" r="11" fill="var(--c)"/></svg>`;
   if (game === "golf") return `<svg viewBox="0 0 100 100"><circle cx="50" cy="56" r="30" fill="#fff" stroke="var(--c)" stroke-width="10"/><g fill="#d5d9e6"><circle cx="42" cy="48" r="4"/><circle cx="56" cy="46" r="4"/><circle cx="50" cy="60" r="4"/><circle cx="62" cy="60" r="4"/><circle cx="38" cy="62" r="4"/></g></svg>`;
   if (game === "wi") return `<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="42" fill="var(--c)"/><text x="50" y="68" text-anchor="middle" font-family="Fredoka" font-weight="700" font-size="52" fill="#0b1020">?</text></svg>`;
   if (game === "tt") return `<svg viewBox="0 0 100 100"><rect x="22" y="10" width="56" height="80" rx="9" fill="var(--c)"/><rect x="30" y="20" width="40" height="28" rx="5" fill="rgba(0,0,0,.25)"/><g fill="rgba(0,0,0,.25)"><rect x="30" y="56" width="40" height="5" rx="2"/><rect x="30" y="66" width="40" height="5" rx="2"/><rect x="30" y="76" width="28" height="5" rx="2"/></g></svg>`;
@@ -452,6 +467,7 @@ const GAME_ICON = {
   dots: `<svg viewBox="0 0 120 120"><rect x="16" y="16" width="44" height="44" fill="#ff5d73" opacity=".35"/><rect x="60" y="60" width="44" height="44" fill="#ffd23f" opacity=".35"/><g stroke-width="6" stroke-linecap="round"><path d="M16 16H60V60H16Z" stroke="#ff5d73" fill="none"/><path d="M60 60H104V104H60Z" stroke="#ffd23f" fill="none"/><path d="M60 16H104" stroke="#ff5d73"/><path d="M16 60V104" stroke="#ffd23f"/></g>${[16, 60, 104].map(y => [16, 60, 104].map(x => `<circle cx="${x}" cy="${y}" r="7" fill="#eef2ff"/>`).join("")).join("")}</svg>`,
   bs: `<svg viewBox="0 0 120 120"><rect x="6" y="6" width="108" height="108" rx="12" fill="#12306b"/><g stroke="#2a4f9a" stroke-width="2">${[1, 2, 3, 4].map(k => `<line x1="${6 + k * 21.6}" y1="6" x2="${6 + k * 21.6}" y2="114"/><line x1="6" y1="${6 + k * 21.6}" x2="114" y2="${6 + k * 21.6}"/>`).join("")}</g><rect x="12" y="34" width="62" height="16" rx="8" fill="#9aa6c8"/><rect x="77" y="56" width="16" height="40" rx="8" fill="#9aa6c8"/><circle cx="41" cy="42" r="9" fill="#ff5d73"/><circle cx="60" cy="85" r="4" fill="#eef2ff"/><circle cx="25" cy="98" r="4" fill="#eef2ff"/></svg>`,
   rps: `<div style="font-size:30px;line-height:54px;letter-spacing:-2px">✊✋✌️</div>`,
+  hockey: `<svg viewBox="0 0 120 104"><rect x="22" y="4" width="76" height="96" rx="16" fill="#123a8a" stroke="#c7d2fe" stroke-width="4"/><line x1="24" y1="52" x2="96" y2="52" stroke="#ff5d73" stroke-width="2.5" stroke-dasharray="5 4"/><rect x="46" y="2" width="28" height="5" fill="#050914"/><rect x="46" y="97" width="28" height="5" fill="#050914"/><circle cx="60" cy="24" r="9" fill="#ffd23f"/><circle cx="52" cy="80" r="9" fill="#ff5d73"/><circle cx="70" cy="58" r="5" fill="#f1f5ff"/></svg>`,
   golf: `<svg viewBox="0 0 120 104"><rect x="6" y="6" width="108" height="92" rx="14" fill="#46ad5f" stroke="#a46a3c" stroke-width="6"/><circle cx="84" cy="34" r="8" fill="#0d1a10"/><line x1="84" y1="34" x2="84" y2="8" stroke="#eee" stroke-width="2.5"/><path d="M84 8 L100 13 L84 18Z" fill="#ff5d73"/><circle cx="36" cy="76" r="7" fill="#fff" stroke="#ff5d73" stroke-width="2"/><path d="M40 70 Q60 50 78 40" stroke="#fff" stroke-width="2" stroke-dasharray="3 4" fill="none"/></svg>`,
   wi: `<div class="wiico">${[3, 14, 18].map(i => `<i>${faceSVG(i)}</i>`).join("")}</div>`,
   tt: `<div class="ttico"><i>🦁</i><i>🐘</i></div>`,
@@ -480,11 +496,14 @@ async function shareInvite() {
 function render() {
   const f = document.activeElement;
   if (f && f.id && MODE === "home" && app.querySelector("#" + f.id)) return; // don't wipe what they're typing
+  if (MODE !== "host" && MODE !== "guest" && MODE !== "cpu") { app.dataset.hk = ""; hkStop(); }
   if (MODE === "home") return renderHome();
   if (MODE === "join") return renderJoin();
   if (MODE === "ended") return renderEnded();
   if (MODE === "guest" && !S) return renderFinding();
-  if (S.phase === "lobby") return renderLobby();
+  if (S.phase === "lobby") { app.dataset.hk = ""; return renderLobby(); }
+  if (S.game === "hockey" && S.phase === "play") { renderHockey(); return hkEnsure(); }
+  app.dataset.hk = ""; hkEnsure();
   return renderGame();
 }
 
@@ -980,6 +999,208 @@ function boardGolf(c) {
     <div class="golfwrap">${banner}<canvas id="golfcv"></canvas></div>
     ${c.myTurn && !a ? `<p class="center small mut" style="margin:8px 0 0">Drag back from anywhere, like a catapult, then let go</p>` : ""}${card}`;
 }
+// ----- air hockey -----
+const RTC_CFG = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
+const dcOpen = pid => { const d = FAST.dcs[pid]; return !!d && d.readyState === "open"; };
+function rtcClose(pid) { try { FAST.pcs[pid] && FAST.pcs[pid].close(); } catch (e) { } delete FAST.pcs[pid]; delete FAST.dcs[pid]; }
+function rtcCloseAll() { Object.keys(FAST.pcs).forEach(rtcClose); }
+function waitIce(pc) {
+  return new Promise(res => {
+    if (pc.iceGatheringState === "complete") return res();
+    const t = setTimeout(res, 2500);
+    pc.addEventListener("icegatheringstatechange", () => { if (pc.iceGatheringState === "complete") { clearTimeout(t); res(); } });
+  });
+}
+function rtcWire(pid, dc) {
+  FAST.dcs[pid] = dc;
+  dc.onmessage = e => { try { const m = JSON.parse(e.data); if (MODE === "host") hostMsg(m); else guestMsg(m); } catch (x) { } };
+  dc.onopen = () => hkBar(); dc.onclose = () => { if (FAST.dcs[pid] === dc) delete FAST.dcs[pid]; hkBar(); };
+}
+async function rtcOffer(pid) {
+  if (!window.RTCPeerConnection || !T) return;
+  try {
+    rtcClose(pid);
+    const pc = new RTCPeerConnection(RTC_CFG); FAST.pcs[pid] = pc;
+    rtcWire(pid, pc.createDataChannel("fast", { ordered: false, maxRetransmits: 0 }));
+    await pc.setLocalDescription(await pc.createOffer()); await waitIce(pc);
+    if (T) T.send({ t: "rtc", to: pid, from: ME.id, sdp: pc.localDescription.toJSON() });
+  } catch (e) { }
+}
+async function rtcOnMsg(m) {
+  if (m.to !== ME.id || !m.sdp || !window.RTCPeerConnection) return;
+  try {
+    if (m.sdp.type === "offer") {
+      rtcClose(m.from);
+      const pc = new RTCPeerConnection(RTC_CFG); FAST.pcs[m.from] = pc;
+      pc.ondatachannel = e => rtcWire(m.from, e.channel);
+      await pc.setRemoteDescription(m.sdp); await pc.setLocalDescription(await pc.createAnswer()); await waitIce(pc);
+      if (T) T.send({ t: "rtc", to: m.from, from: ME.id, sdp: pc.localDescription.toJSON() });
+    } else if (m.sdp.type === "answer") {
+      const pc = FAST.pcs[m.from]; if (pc && pc.signalingState === "have-local-offer") await pc.setRemoteDescription(m.sdp);
+    }
+  } catch (e) { }
+}
+function fastSend(m, to) { if (dcOpen(to)) { try { FAST.dcs[to].send(JSON.stringify(m)); return true; } catch (e) { } } if (T) T.send(m); return false; }
+
+const hkKey = () => S.sid + ":" + S.round;
+const hkOpp = () => { const me = mySeat(); return me >= 0 ? S.seats[1 - me] : null; };
+function hkEnsure() {
+  const live = S && S.game === "hockey" && S.phase === "play" && (MODE === "host" || MODE === "cpu" || MODE === "guest");
+  if (!live) { if (HKR) hkStop(); return; }
+  if (HKR && HKR.key === hkKey()) return;
+  hkStop();
+  const g = GAMES.hockey, H = g.HK, now = performance.now();
+  const pad = seat => { const y = seat === 0 ? H.L - 26 : 26; return { x: H.W / 2, y, tx: H.W / 2, ty: y, vx: 0, vy: 0, max: 1000 }; };
+  HKR = { key: hkKey(), st: { puck: g.newPuck(S.board.serve), pad: [pad(0), pad(1)] }, t: now, acc: 0, n: 0, q: 0, frozenUntil: now + 2400, countdown: now + 2400,
+    flash: null, lastSend: 0, frame: null, my: null, sentMy: null, lastMySend: 0, shown: [null, null], timers: [], ev: "", rtcTries: 0 };
+  if (MODE === "cpu") { const cs = S.seats.indexOf("cpu"); HKR.st.pad[cs].max = { easy: 200, medium: 320, hard: 520 }[S.level] || 320; }
+  if (MODE === "host" || MODE === "cpu") HKR.timers.push(setInterval(hkSim, 8));
+  if (MODE === "guest") HKR.timers.push(setInterval(hkSendMine, 25));
+  if (MODE === "host") { const opp = hkOpp(); if (opp) { rtcOffer(opp); HKR.timers.push(setInterval(() => { const o = hkOpp(); if (o && !dcOpen(o) && HKR.rtcTries++ < 3) rtcOffer(o); }, 7000)); } }
+  const loop = () => { if (!HKR) return; hkDraw(); HKR.raf = requestAnimationFrame(loop); };
+  HKR.raf = requestAnimationFrame(loop);
+}
+function hkStop() { if (!HKR) return; HKR.timers.forEach(clearInterval); cancelAnimationFrame(HKR.raf); HKR = null; }
+function hkSim() {
+  if (!HKR || !S || S.phase !== "play") return;
+  const g = GAMES.hockey, now = performance.now(), ev = [];
+  HKR.acc += Math.min(0.1, (now - HKR.t) / 1000); HKR.t = now;
+  const cs = MODE === "cpu" ? S.seats.indexOf("cpu") : -1;
+  while (HKR.acc >= 1 / 120) {
+    HKR.acc -= 1 / 120;
+    HKR.st.frozen = now < HKR.frozenUntil;
+    if (cs >= 0 && HKR.n++ % 3 === 0 && !HKR.st.frozen) { const [x, y] = g.aiTarget(HKR.st, cs, S.level); HKR.st.pad[cs].tx = x; HKR.st.pad[cs].ty = y; }
+    const r = g.step(HKR.st, 1 / 120, ev);
+    if (r >= 0) { hkGoal(r); return; }
+  }
+  if (ev.length) { hkSound(ev); HKR.ev += ev.includes("h") ? "h" : "w"; }
+  if (MODE === "host") {
+    const opp = hkOpp(), direct = dcOpen(opp);
+    if (now - HKR.lastSend >= (direct ? 22 : 50)) {
+      HKR.lastSend = now; HKR.q++;
+      const p = HKR.st.puck, m = HKR.st.pad, r1 = v => Math.round(v * 10) / 10;
+      const f = { t: "hk", k: HKR.key, q: HKR.q, p: [r1(p.x), r1(p.y), r1(p.vx), r1(p.vy)], m: [r1(m[0].x), r1(m[0].y), r1(m[1].x), r1(m[1].y)], z: HKR.st.frozen ? 1 : 0, e: HKR.ev };
+      HKR.ev = "";
+      fastSend(f, opp);
+      if (direct && S.players.length > 2 && HKR.q % 3 === 0) T.send(f); // anyone watching
+    }
+  }
+}
+function hkGoal(scorer) {
+  const g = GAMES.hockey, now = performance.now();
+  S.board.score[scorer]++; S.board.serve = 1 - scorer; S.moves++; S.lastBy = scorer; S.fx = "goal";
+  HKR.st.puck = g.newPuck(1 - scorer); HKR.frozenUntil = now + 1400; HKR.countdown = 0;
+  if (S.board.score[scorer] >= S.board.target) { S.result = { w: scorer, line: [] }; S.phase = "over"; const p = pl(S.seats[scorer]); if (p) p.wins++; }
+  playFx(S); if (S.phase === "over") resultFx();
+  commit();
+}
+function hkSound(ev) { if (ev.includes("h")) { Snd.tone(780, .04, "square", .07); Snd.noise(.04, .1, 0, 3000); } else Snd.tone(420, .03, "triangle", .05); }
+function hkPadIn(m) {
+  if (!HKR || m.k !== HKR.key) return;
+  const seat = S.seats.indexOf(m.pid); if (seat < 0) return;
+  const [x, y] = GAMES.hockey.clampPad(seat, m.x, m.y); HKR.st.pad[seat].tx = x; HKR.st.pad[seat].ty = y;
+}
+function hkFrameIn(m) {
+  if (!HKR || m.k !== HKR.key || m.q <= HKR.q) return;
+  HKR.q = m.q; HKR.frame = { p: m.p, m: m.m, z: m.z, at: performance.now() }; lastSeen = Date.now();
+  if (m.e) hkSound(m.e);
+}
+function hkSendMine() {
+  if (!HKR || !HKR.my || !T) return;
+  const now = performance.now(), direct = dcOpen(S.host);
+  if (now - HKR.lastMySend < (direct ? 25 : 50)) return;
+  if (HKR.sentMy && HKR.sentMy[0] === HKR.my[0] && HKR.sentMy[1] === HKR.my[1] && now - HKR.lastMySend < 500) return;
+  HKR.lastMySend = now; HKR.sentMy = HKR.my.slice();
+  fastSend({ t: "hp", pid: ME.id, k: HKR.key, x: Math.round(HKR.my[0] * 10) / 10, y: Math.round(HKR.my[1] * 10) / 10 }, S.host);
+}
+function hkSplit() { return mySeat() >= 0 && MODE !== "cpu" && (PREF.hkView || "split") === "split"; }
+function hkGeom(cv) {
+  const H = GAMES.hockey.HK, split = hkSplit(), stage = cv.parentElement;
+  const aw = stage.clientWidth, ah = stage.clientHeight, span = split ? H.L / 2 : H.L;
+  const sc = Math.min(aw / H.W, ah / span), dpr = window.devicePixelRatio || 1, cw = Math.floor(H.W * sc), ch = Math.floor(span * sc);
+  if (cv.width !== cw * dpr || cv.height !== ch * dpr) { cv.width = cw * dpr; cv.height = ch * dpr; cv.style.width = cw + "px"; cv.style.height = ch + "px"; }
+  const persp = Math.max(0, mySeat()), y0 = split ? H.L / 2 : 0;
+  // world -> view: your own goal is always at the bottom of your screen
+  const toV = (x, y) => persp === 0 ? [x, y - y0] : [H.W - x, H.L - y - y0];
+  const toW = (vx, vy) => persp === 0 ? [vx, vy + y0] : [H.W - vx, H.L - (vy + y0)];
+  return { sc, dpr, split, toV, toW, span, persp };
+}
+function hkPositions() {
+  const H = GAMES.hockey.HK, me = mySeat();
+  if (MODE !== "guest") return { puck: HKR.st.puck, pads: HKR.st.pad.map(p => [p.x, p.y]), frozen: HKR.st.frozen };
+  const f = HKR.frame; if (!f) return null;
+  const dt = f.z ? 0 : Math.min(0.12, (performance.now() - f.at) / 1000);
+  let x = f.p[0] + f.p[2] * dt, y = f.p[1] + f.p[3] * dt;
+  x = Math.max(H.PR, Math.min(H.W - H.PR, x));
+  const pads = [[f.m[0], f.m[1]], [f.m[2], f.m[3]]].map((p, i) => {
+    const s0 = HKR.shown[i] || p; const n = [s0[0] + (p[0] - s0[0]) * .5, s0[1] + (p[1] - s0[1]) * .5]; HKR.shown[i] = n; return n;
+  });
+  if (me >= 0 && HKR.my) pads[me] = GAMES.hockey.clampPad(me, HKR.my[0], HKR.my[1]);
+  return { puck: { x, y }, pads, frozen: !!f.z };
+}
+function hkDraw() {
+  const cv = document.getElementById("hkcv"); if (!cv || !HKR) return;
+  const H = GAMES.hockey.HK, G = hkGeom(cv), c = cv.getContext("2d"), now = performance.now();
+  c.setTransform(G.dpr * G.sc, 0, 0, G.dpr * G.sc, 0, 0);
+  c.clearRect(0, 0, H.W, G.span);
+  const line = (pts, col, w, dash) => { c.beginPath(); pts.forEach((p, i) => { const v = G.toV(p[0], p[1]); i ? c.lineTo(v[0], v[1]) : c.moveTo(v[0], v[1]); }); c.strokeStyle = col; c.lineWidth = w; c.setLineDash(dash || []); c.stroke(); c.setLineDash([]); };
+  const circ = (x, y, r, fill, stroke, lw) => { const v = G.toV(x, y); c.beginPath(); c.arc(v[0], v[1], r, 0, Math.PI * 2); if (fill) { c.fillStyle = fill; c.fill(); } if (stroke) { c.strokeStyle = stroke; c.lineWidth = lw || 1; c.stroke(); } };
+  // table
+  const g2 = c.createLinearGradient(0, 0, 0, G.span); g2.addColorStop(0, "#123a8a"); g2.addColorStop(1, "#0d2c6e");
+  c.fillStyle = g2; c.beginPath(); c.roundRect(0, -40, H.W, G.span + 80, GAMES.hockey.CR); c.fill();
+  c.fillStyle = "rgba(255,255,255,.05)"; for (let x = 6; x < H.W; x += 8) for (let y = 4; y < G.span; y += 8) c.fillRect(x, y, .8, .8);
+  line([[0, H.L / 2], [H.W, H.L / 2]], "rgba(255,93,115,.85)", 1.4, [4, 3]);
+  circ(H.W / 2, H.L / 2, 16, null, "rgba(255,255,255,.35)", 1);
+  for (const gy of [0, H.L]) { const v = G.toV(H.W / 2, gy); c.beginPath(); c.arc(v[0], v[1], 26, 0, Math.PI * 2); c.strokeStyle = "rgba(255,255,255,.3)"; c.lineWidth = 1; c.stroke(); }
+  // boards and goals
+  c.strokeStyle = "#c7d2fe"; c.lineWidth = 3; c.beginPath(); c.roundRect(1.5, G.split ? -40 : 1.5, H.W - 3, G.split ? G.span + 38.5 : G.span - 3, GAMES.hockey.CR); c.stroke();
+  for (const [gy, seat] of [[0, 1], [H.L, 0]]) {
+    const v = G.toV(H.W / 2, gy); if (v[1] < -5 || v[1] > G.span + 5) continue;
+    c.fillStyle = "#050914"; c.fillRect(v[0] - H.GOAL / 2, v[1] - 3, H.GOAL, 6);
+    c.fillStyle = seat ? "#ffd23f" : "#ff5d73"; c.fillRect(v[0] - H.GOAL / 2 - 3, v[1] - 3, 3, 6); c.fillRect(v[0] + H.GOAL / 2, v[1] - 3, 3, 6);
+  }
+  const P = hkPositions();
+  if (P) {
+    const pc = ["#ff5d73", "#ffd23f"];
+    P.pads.forEach((m, i) => { circ(m[0], m[1] + 1.5, H.MR, "rgba(0,0,0,.35)"); circ(m[0], m[1], H.MR, pc[i]); circ(m[0], m[1], H.MR * .55, "rgba(255,255,255,.35)"); circ(m[0], m[1], H.MR * .3, pc[i]); });
+    circ(P.puck.x, P.puck.y + 1.2, H.PR, "rgba(0,0,0,.4)"); circ(P.puck.x, P.puck.y, H.PR, "#f1f5ff", "#9fb0e8", 1.2);
+  }
+  // overlays
+  const msg = HKR.flash && now < HKR.flash.until ? (HKR.flash.seat === mySeat() ? "GOAL! 🎉" : mySeat() < 0 ? "GOAL!" : "They scored") :
+    MODE !== "guest" && HKR.countdown && now < HKR.countdown ? String(Math.ceil((HKR.countdown - now) / 800)) :
+    MODE === "guest" && !HKR.frame ? "Connecting…" : MODE === "guest" && HKR.frame.z ? "Get ready…" : "";
+  if (msg) { c.fillStyle = "rgba(255,255,255,.92)"; c.font = `700 ${msg.length > 3 ? 13 : 30}px Fredoka, sans-serif`; c.textAlign = "center"; c.fillText(msg, H.W / 2, G.split ? G.span * .55 : G.span * .53); }
+  if (G.split) { c.fillStyle = "rgba(255,255,255,.12)"; c.font = "700 46px Fredoka, sans-serif"; c.textAlign = "center"; const me = mySeat(); c.fillText(`${S.board.score[me]}`, H.W / 2, G.span * .8); }
+}
+function hkPointer(cv) {
+  const H = GAMES.hockey.HK;
+  const set = e => {
+    const me = mySeat(); if (me < 0 || !HKR) return;
+    const r = cv.getBoundingClientRect(), G = hkGeom(cv);
+    const [wx, wy] = G.toW((e.clientX - r.left) / G.sc, (e.clientY - r.top) / G.sc - (G.persp === 0 ? 0 : 0));
+    const [x, y] = GAMES.hockey.clampPad(me, wx, wy - (G.persp === 0 ? 10 : -10)); // paddle sits just above your finger
+    if (MODE === "guest") HKR.my = [x, y]; else { HKR.st.pad[me].tx = x; HKR.st.pad[me].ty = y; }
+  };
+  cv.onpointerdown = e => { cv.setPointerCapture(e.pointerId); set(e); };
+  cv.onpointermove = e => { if (e.pointerType === "mouse" && !e.buttons) return; set(e); };
+}
+function hkBar() {
+  const el = document.getElementById("hkbar"); if (!el || !S || S.game !== "hockey") return;
+  const me = mySeat(), b = S.board, opp = hkOpp();
+  const nm = sd => S.seats[sd] === ME.id ? "You" : esc(nameOf(S.seats[sd]));
+  const link = MODE === "cpu" ? "" : (MODE === "host" ? dcOpen(opp) : dcOpen(S.host)) ? `<span class="hklink ok">⚡ Direct</span>` : `<span class="hklink">☁️ Online</span>`;
+  const order = me === 1 ? [1, 0] : [0, 1];
+  el.innerHTML = `<div class="hkscore">${order.map((sd, i) => `<span class="p${sd}"><i></i>${nm(sd)} <b>${b.score[sd]}</b></span>${i === 0 ? `<em>first to ${b.target}</em>` : ""}`).join("")}</div>
+    <div class="hkbtns">${link}${me >= 0 && MODE !== "cpu" ? `<button class="iconbtn" data-act="hkview">${hkSplit() ? "🖥️ Whole table" : "📱📱 Phones end to end"}</button>` : ""}${soundBtn()}<button class="iconbtn" data-act="leave">Leave</button></div>
+    ${hkSplit() ? `<div class="hkhint">Put the phones top to top. The puck slides across!</div>` : ""}`;
+}
+function renderHockey() {
+  const key = hkKey() + ":" + (hkSplit() ? "s" : "f");
+  if (app.dataset.hk === key && document.getElementById("hkcv")) { hkBar(); return; }
+  app.dataset.hk = key;
+  app.innerHTML = `<div class="hk ${hkSplit() ? "split" : ""}">${connBanner()}<div class="hkstage"><canvas id="hkcv"></canvas></div><div id="hkbar" class="hkbar"></div></div>`;
+  hkPointer(document.getElementById("hkcv")); hkBar();
+}
 function deckPicker(sel, attr) {
   return `<div class="seg decks">${Object.values(GAMES.tt.DECKS).map(d => `<button class="${sel === d.id ? "on" : ""}" ${attr}="${d.id}">${d.icon} ${esc(d.name)}</button>`).join("")}</div>`;
 }
@@ -1041,11 +1262,13 @@ function renderGame() {
     if (S.game === "rps") sub = `${S.board.score[0]} – ${S.board.score[1]}`;
     if (S.game === "bs") sub = "Every ship sunk";
     if (S.game === "wi" && S.board.reveal) sub = `${esc(nameOf(S.seats[0]))} was ${esc(GAMES.wi.PEOPLE[S.board.reveal[0]].name)}, ${esc(nameOf(S.seats[1]))} was ${esc(GAMES.wi.PEOPLE[S.board.reveal[1]].name)}`;
+    if (S.game === "hockey") sub = `${S.board.score[0]} – ${S.board.score[1]}`;
     if (S.game === "golf") { const t = sd => S.board.scores[sd].reduce((x, y) => x + y, 0); sub = `Total strokes ${t(0)} – ${t(1)} (lowest wins)`; }
     if (S.game === "tt") sub = S.board.count[0] && S.board.count[1] ? `Most cards after ${GAMES.tt.MAX_ROUNDS} rounds: ${S.board.count[0]} – ${S.board.count[1]}` : "Won every card";
   }
 
-  const board = { ttt: boardTTT, c4: boardC4, dots: boardDots, bs: boardBS, rps: boardRPS, tt: boardTT, wi: boardWI, golf: boardGolf }[S.game](c);
+  const board = { ttt: boardTTT, c4: boardC4, dots: boardDots, bs: boardBS, rps: boardRPS, tt: boardTT, wi: boardWI, golf: boardGolf,
+    hockey: () => `<div class="hkfinal"><span class="p0">${S.board.score[0]}</span><em>–</em><span class="p1">${S.board.score[1]}</span></div>` }[S.game](c);
 
   let after = "";
   if (over) {
@@ -1127,6 +1350,7 @@ app.addEventListener("click", e => {
     case "wishuffle": { const n = GAMES.wi.PEOPLE.length; let x; do { x = Math.floor(Math.random() * n); } while (x === WI.pick); WI.pick = x; Snd.pick(); return render(); }
     case "wiready": return myMove({ pick: WI.pick });
     case "wiguesson": WI.guessing = true; return render();
+    case "hkview": PREF.hkView = hkSplit() ? "full" : "split"; savePref(); return render();
     case "wiguessoff": WI.guessing = false; return render();
   }
 });
