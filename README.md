@@ -50,6 +50,7 @@ Hard is unbeatable at Noughts & Crosses, very strong at Connect 4 and Dots & Box
 ## How it works
 - The host phone holds the real game and sends the board to everyone; other phones send their moves to it.
 - Air hockey: the host phone runs the physics 120 times a second. The two phones try to link **directly** over Wi-Fi (WebRTC, shown as ⚡ Direct) for the lowest delay; if that isn't possible they fall back to the online connection (☁️ Online), which is slower and uses more of the free Supabase message allowance.
+- Flag images: [flag-icons](https://github.com/lipis/flag-icons) (MIT licence, see `img/flags/LICENSE-flag-icons`).
 - Hidden things (Battleships fleets, Rock Paper Scissors picks) are never sent out – only the board everyone is allowed to see.
 - Uses the same live connection (Supabase Realtime broadcast) as Buzz In. Nothing is stored on a server.
 - `games.js` holds the rules and computer players for each game, so new games plug in there.

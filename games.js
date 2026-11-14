@@ -289,6 +289,7 @@
     countries: {
       id: "countries", name: "Countries", icon: "🌍",
       note: "Rough 2025 figures. Neighbours means countries you can walk into over a land border.",
+      img: i => "img/flags/" + ["gb-wls", "gb-eng", "gb-sct", "ie", "fr", "es", "it", "de", "us", "ca", "br", "au", "cn", "in", "jp", "ru", "eg", "za", "mx", "ar", "np", "is", "no", "gr", "ke", "nz", "nl", "ch", "jm", "va"][i] + ".svg", flag: true,
       stats: [{ l: "Population", u: "people" }, { l: "Area", u: "km²" }, { l: "Highest point", u: "m" }, { l: "Neighbours", u: "" }],
       cards: [
         ["Wales", "🏴\u{E0067}\u{E0062}\u{E0077}\u{E006C}\u{E0073}\u{E007F}", 3200000, 20779, 1085, 1], ["England", "🏴\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}", 57100000, 130279, 978, 2],
@@ -621,8 +622,8 @@
         const half = Math.floor(ids.length / 2);
         S.sec = { 0: ids.slice(0, half), 1: ids.slice(half, half * 2), pot: [] };
         S.turn = S.starter;
-        // only the chooser's top card is shown: the other player can't act on it, and their own card stays hidden until the reveal
-        S.board = { deck, count: [half, half], pot: 0, top: S.sec[S.starter][0], last: null, rounds: 0 };
+        // top: the chooser's card. peek: the other player's own card, so they can see it while they wait
+        S.board = { deck, count: [half, half], pot: 0, top: S.sec[S.starter][0], peek: S.sec[1 - S.starter][0], last: null, rounds: 0 };
       },
       waiting: turnWaiting,
       move(S, seat, mv) {
@@ -642,6 +643,7 @@
         if (out0 || out1) S.result = { w: out0 && out1 ? "draw" : out0 ? 1 : 0, line: [] };
         else if (b.rounds >= this.MAX_ROUNDS) S.result = { w: b.count[0] === b.count[1] ? "draw" : b.count[0] > b.count[1] ? 0 : 1, line: [] };
         b.top = S.result ? null : S.sec[S.turn][0];
+        b.peek = S.result ? null : S.sec[1 - S.turn][0];
         return "tt";
       },
       ai: ttAI,

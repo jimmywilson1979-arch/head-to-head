@@ -149,7 +149,13 @@ function setConn(s) {
 }
 function sendHello() { if (T) T.send({ t: "hello", pid: ME.id, name: ME.name || "Player" }); }
 // Everyone gets the board, never the secrets (ships, picks): those stay on the host's phone.
-function pub(s) { const o = Object.assign({}, s); delete o.sec; return o; }
+function pub(s) {
+  const o = Object.assign({}, s); delete o.sec;
+  // Card Clash: the waiting player's own card goes out so their phone can show it. When the waiting player is the host
+  // (whose phone already knows it) it's left out, so a guest who is choosing never receives it.
+  if (o.game === "tt" && o.board && o.phase === "play" && o.seats[1 - o.turn] === o.host) o.board = Object.assign({}, o.board, { peek: null });
+  return o;
+}
 function sendState() { if (T && S) T.send({ t: "state", s: pub(S) }); }
 
 // ===== GAME ENGINE (host and computer games) =====
@@ -709,12 +715,36 @@ function boardDots(c) {
 }
 function bsGrid(cellFn, cls = "") {
   const N = GAMES.bs.N; let h = "";
-  for (let i = 0; i < N * N; i++) { const x = cellFn(i); h += `<button class="${x.c || ""}" ${x.mv != null ? `data-fire="${x.mv}"` : ""}>${x.t || ""}</button>`; }
+  for (let i = 0; i < N * N; i++) { const x = cellFn(i); h += `<button class="${x.c || ""}" ${x.mv != null ? `data-fire="${x.mv}"` : ""}>${x.h || ""}</button>`; }
   return `<div class="bsg ${cls}">${h}</div>`;
 }
+// ----- ship drawings: each square gets its slice of the hull (bow, middle or stern) -----
+function shipParts(ships) {
+  const m = new Map(), N = GAMES.bs.N;
+  (ships || []).forEach(sh => { const c = sh.slice().sort((a, z) => a - z), v = c.length > 1 && c[1] - c[0] === N; c.forEach((x, i) => m.set(x, { i, len: c.length, v })); });
+  return m;
+}
+const SHIP_COL = { own: ["#a7b3c9", "#56627a", "#cfd8e8", "#5d6a82"], draft: ["#c3cde0", "#66738c", "#e3e9f4", "#6d7a92"], sunk: ["#5a4a52", "#2a2026", "#76616b", "#3a2e34"], ghost: ["rgba(167,179,201,.45)", "rgba(86,98,122,.6)", "rgba(207,216,232,.35)", "rgba(93,106,130,.5)"] };
+function shipSVG(part, style) {
+  const [hull, edge, deck, gun] = SHIP_COL[style] || SHIP_COL.own, { i, len, v } = part;
+  const kind = i === 0 ? "bow" : i === len - 1 ? "stern" : "mid";
+  let g = "";
+  if (kind === "bow") g = `<path d="M110 12 L52 12 Q8 20 0 50 Q8 80 52 88 L110 88 Z" fill="${hull}" stroke="${edge}" stroke-width="5"/><path d="M110 28 L58 28 Q30 34 22 50 Q30 66 58 72 L110 72 Z" fill="${deck}"/><circle cx="76" cy="50" r="12" fill="${gun}"/><rect x="36" y="46" width="40" height="8" rx="4" fill="${gun}"/><circle cx="76" cy="50" r="5" fill="${edge}"/>`;
+  else if (kind === "stern") g = `<path d="M-10 12 L78 12 Q100 16 100 50 Q100 84 78 88 L-10 88 Z" fill="${hull}" stroke="${edge}" stroke-width="5"/><path d="M-10 28 L74 28 Q88 32 88 50 Q88 68 74 72 L-10 72 Z" fill="${deck}"/><circle cx="30" cy="50" r="12" fill="${gun}"/><rect x="30" y="46" width="38" height="8" rx="4" fill="${gun}"/><circle cx="30" cy="50" r="5" fill="${edge}"/>`;
+  else {
+    g = `<rect x="-10" y="12" width="120" height="76" fill="${hull}" stroke="${edge}" stroke-width="5"/><rect x="-10" y="28" width="120" height="44" fill="${deck}"/>`;
+    g += i === 1 ? `<rect x="16" y="22" width="68" height="56" rx="8" fill="${gun}"/><rect x="28" y="32" width="44" height="10" rx="3" fill="#dfe8f7" opacity=".85"/><rect x="38" y="50" width="24" height="20" rx="4" fill="${edge}"/><circle cx="50" cy="60" r="5" fill="${deck}"/>`
+      : `<circle cx="50" cy="50" r="14" fill="${gun}"/><rect x="6" y="45" width="44" height="10" rx="4" fill="${gun}"/><circle cx="50" cy="50" r="6" fill="${edge}"/>`;
+  }
+  return `<svg class="shp" viewBox="0 0 100 100" preserveAspectRatio="none"><g ${v ? `transform="rotate(90 50 50)"` : ""}>${g}</g></svg>`;
+}
+const FIRE = `<svg class="fx" viewBox="0 0 100 100"><circle cx="50" cy="56" r="30" fill="rgba(60,60,60,.45)"/><path d="M50 10 L60 38 L88 30 L68 54 L90 74 L60 68 L50 92 L40 68 L10 74 L32 54 L12 30 L40 38 Z" fill="#ff7a1a"/><path d="M50 28 L56 44 L72 40 L60 54 L72 66 L56 62 L50 76 L44 62 L28 66 L40 54 L28 40 L44 44 Z" fill="#ffd23f"/></svg>`;
+const SMOKE = `<svg class="fx" viewBox="0 0 100 100"><circle cx="38" cy="40" r="16" fill="rgba(40,40,46,.7)"/><circle cx="58" cy="32" r="13" fill="rgba(60,60,66,.65)"/><path d="M50 44 L56 58 L68 56 L58 66 L62 78 L50 70 L38 78 L42 66 L32 56 L44 58 Z" fill="#e2552b"/></svg>`;
+const SPLASH = `<svg class="fx" viewBox="0 0 100 100"><circle cx="50" cy="50" r="26" fill="none" stroke="rgba(255,255,255,.75)" stroke-width="5"/><circle cx="50" cy="50" r="12" fill="none" stroke="rgba(255,255,255,.55)" stroke-width="4"/><circle cx="50" cy="50" r="4" fill="#fff"/></svg>`;
+const miniShip = (L, dead) => `<svg viewBox="0 0 ${L * 12 + 6} 12" style="width:${L * 7 + 4}px;height:8px"><path d="M2 6 Q4 1 10 1 L${L * 12 + 4} 1 L${L * 12 + 4} 11 L10 11 Q4 11 2 6Z" fill="${dead ? "#ff5d73" : "#a7b3c9"}" opacity="${dead ? .45 : 1}"/></svg>`;
 function fleetLine(seat) { // ships left for a seat
   const sunk = S.board.sunk[seat].map(s => s.length), left = sunk.slice();
-  return `<span class="fleet">${GAMES.bs.FLEET.map(L => { const k = left.indexOf(L); const dead = k >= 0; if (dead) left.splice(k, 1); return `<i class="${dead ? "dead" : ""}">${"▮".repeat(L)}</i>`; }).join("")}</span>`;
+  return `<span class="fleet">${GAMES.bs.FLEET.map(L => { const k = left.indexOf(L); const dead = k >= 0; if (dead) left.splice(k, 1); return `<i class="${dead ? "dead" : ""}">${miniShip(L, dead)}</i>`; }).join("")}</span>`;
 }
 function boardBS(c) {
   const b = S.board, me = c.me, opp = 1 - me;
@@ -723,20 +753,21 @@ function boardBS(c) {
     const shots = b.shots[shooter], sunk = new Set(b.sunk[1 - shooter].flat());
     const shown = b.reveal ? new Set((b.reveal[1 - shooter] || []).flat()) : new Set();
     const aim = pending && pending.mv && pending.mv.fire;
+    const sunkParts = shipParts(b.sunk[1 - shooter]), ghostParts = b.reveal ? shipParts(b.reveal[1 - shooter]) : new Map();
     return bsGrid(i => {
       const v = shots[i], nw = newCell(shooter, i) ? " new" : "";
-      if (v === "h") return { c: "hit" + (sunk.has(i) ? " sunk" : "") + nw, t: sunk.has(i) ? "✖" : "💥" };
-      if (v === "m") return { c: "miss" + nw, t: "•" };
-      return { c: "sea" + (shown.has(i) ? " ship ghost" : "") + (aim === i ? " aim" : "") + (clickable ? " can" : ""), mv: clickable ? i : null };
+      if (v === "h") return sunk.has(i) ? { c: "sea sunk" + nw, h: shipSVG(sunkParts.get(i), "sunk") + SMOKE } : { c: "sea hit" + nw, h: FIRE };
+      if (v === "m") return { c: "sea miss" + nw, h: SPLASH };
+      return { c: "sea" + (aim === i ? " aim" : "") + (clickable ? " can" : ""), h: ghostParts.has(i) ? shipSVG(ghostParts.get(i), "ghost") : "", mv: clickable ? i : null };
     });
   };
   const ownGrid = (seat, ships, mini, draft) => {
-    const own = new Set((ships || []).flat()), shots = b.shots[1 - seat], sunk = new Set(b.sunk[seat].flat());
+    const parts = shipParts(ships), shots = b.shots[1 - seat], sunk = new Set(b.sunk[seat].flat());
     return bsGrid(i => {
-      const v = shots[i], nw = newCell(1 - seat, i) ? " new" : "";
-      if (v === "h") return { c: "hit" + (sunk.has(i) ? " sunk" : "") + nw, t: sunk.has(i) ? "✖" : "💥" };
-      if (v === "m") return { c: "miss" + nw, t: "•" };
-      return { c: own.has(i) ? "ship" + (draft ? " draft" : "") : "sea" };
+      const v = shots[i], nw = newCell(1 - seat, i) ? " new" : "", p = parts.get(i);
+      if (v === "h") return { c: "sea" + (sunk.has(i) ? " sunk" : " hit") + nw, h: (p ? shipSVG(p, sunk.has(i) ? "sunk" : "own") : "") + (sunk.has(i) ? SMOKE : FIRE) };
+      if (v === "m") return { c: "sea miss" + nw, h: SPLASH };
+      return { c: "sea", h: p ? shipSVG(p, draft ? "draft" : "own") : "" };
     }, mini ? "mini" : "");
   };
   if (me < 0) { // watching: both sides, no secrets
@@ -805,10 +836,16 @@ function fmtStat(v, u) {
     default: return fmtNum(v) + " " + u;
   }
 }
+const slug = t => String(t).toLowerCase().normalize("NFD").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+function cardPic(d, id) { // the card's picture, or its emoji if there isn't one (or it fails to load)
+  const c = d.cards[id], src = d.img ? d.img(id, c) : null;
+  if (!src) return `<div class="ttpic">${c[1]}</div>`;
+  return `<div class="ttpic ${d.flag ? "isflag" : "isart"}"><img src="${src}" alt="${esc(c[0])}" loading="eager" onerror="this.parentNode.classList.remove('isart','isflag');this.parentNode.textContent='${c[1]}'"></div>`;
+}
 function ttCard(d, id, o = {}) {
   const c = d.cards[id], tag = o.pick ? "button" : "div";
   return `<div class="ttcard p${o.seat} ${o.mini ? "mini" : ""} ${o.win ? "won" : ""} ${o.lost ? "lost" : ""} ${o.flip ? "flip" : ""}">
-    <div class="ttpic">${c[1]}</div><div class="ttname">${esc(c[0])}</div>
+    ${cardPic(d, id)}<div class="ttname">${esc(c[0])}</div>
     <div class="ttstats">${d.stats.map((st, i) => `<${tag} class="ttrow ${o.hl === i ? "hl" : ""}" ${o.pick ? `data-tt="${i}"` : ""}><span>${st.l}</span><b>${fmtStat(c[2 + i], st.u)}</b></${tag}>`).join("")}</div>
   </div>`;
 }
@@ -825,7 +862,10 @@ function boardTT(c) {
   } else if (me >= 0 && S.turn === me) {
     h = `${ttCard(d, b.top, { seat: me, pick: !pending })}<p class="center small mut" style="margin:10px 0 0">Tap the stat you think beats their card</p>`;
   } else if (me >= 0) {
-    h = `<div class="ttpair">${ttBack(me, "Your card")}${ttBack(1 - me, nm(1 - me) + " card")}</div><p class="center mut" style="margin-top:12px">Both cards stay face down until they pick.</p>`;
+    const mine = b.peek != null ? b.peek : null;
+    h = mine != null
+      ? `${ttCard(d, mine, { seat: me })}<p class="center small mut" style="margin:10px 0 0">Your card. ${esc(nameOf(S.seats[1 - me]))} is picking a stat. Fingers crossed!</p>`
+      : `<div class="ttpair">${ttBack(me, "Your card")}${ttBack(1 - me, nm(1 - me) + " card")}</div>`;
   } else {
     h = `<div class="ttpair">${ttCard(d, b.top, { seat: S.turn, mini: true })}${ttBack(1 - S.turn, nm(1 - S.turn) + " card")}</div>`;
   }
