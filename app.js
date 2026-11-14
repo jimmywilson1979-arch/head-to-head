@@ -542,6 +542,8 @@ function render() {
   const f = document.activeElement;
   if (f && f.id && MODE === "home" && app.querySelector("#" + f.id)) return; // don't wipe what they're typing
   if (MODE !== "host" && MODE !== "guest" && MODE !== "cpu") { app.dataset.hk = ""; hkStop(); }
+  if (MODE === "home" && PREF.game === "tt") preloadDeck(PREF.deck || "animals");
+  if (S && S.game === "tt") preloadDeck((S.board && S.board.deck) || (S.opts && S.opts.deck) || "animals");
   if (MODE === "home") return renderHome();
   if (MODE === "join") return renderJoin();
   if (MODE === "ended") return renderEnded();
@@ -561,6 +563,7 @@ function levelSeg(sel, attr = "data-level") {
 const soundBtn = () => `<button class="iconbtn" data-act="sound">${PREF.sound ? "🔊" : "🔇"}</button>`;
 
 function renderHome() {
+  if (PREF.game === "tt") preloadDeck(PREF.deck || "animals");
   const saved = ls.get("h2h_host", null);
   const resume = saved && saved.S && GAMES[saved.S.game] && Date.now() - saved.t < 3 * 3600e3 && saved.S.players.length > 1 ? saved : null;
   if (!GAMES[PREF.game]) PREF.game = "ttt";
@@ -655,6 +658,7 @@ function inviteBlock() {
 }
 
 function renderLobby() {
+  if (S.game === "tt") preloadDeck((S.opts && S.opts.deck) || "animals");
   const host = MODE === "host", n = S.players.length;
   app.innerHTML = `
   <div class="top"><span class="t">${esc(G().name)}</span>${soundBtn()}</div>
@@ -837,10 +841,24 @@ function fmtStat(v, u) {
   }
 }
 const slug = t => String(t).toLowerCase().normalize("NFD").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-function cardPic(d, id) { // the card's picture, or its emoji if there isn't one (or it fails to load)
+// Pictures for a deck are fetched in the background as soon as the deck is known, so cards show instantly
+const PRE = new Map(), READY = new Set();
+let preDeck = "";
+function preloadDeck(id) {
+  const d = GAMES.tt.DECKS[id]; if (!d || !d.img || preDeck === id) return;
+  preDeck = id;
+  d.cards.forEach((c, i) => {
+    const src = d.img(i, c); if (PRE.has(src)) return;
+    const im = new Image(); im.decoding = "async";
+    im.onload = () => { READY.add(src); (im.decode ? im.decode() : Promise.resolve()).catch(() => { }); };
+    im.src = src; PRE.set(src, im);
+  });
+}
+function cardPic(d, id) { // the card's picture (its emoji shows until the picture is ready, or if it can't load)
   const c = d.cards[id], src = d.img ? d.img(id, c) : null;
   if (!src) return `<div class="ttpic">${c[1]}</div>`;
-  return `<div class="ttpic ${d.flag ? "isflag" : "isart"}"><img src="${src}" alt="${esc(c[0])}" loading="eager" onerror="this.parentNode.classList.remove('isart','isflag');this.parentNode.textContent='${c[1]}'"></div>`;
+  const ok = READY.has(src);
+  return `<div class="ttpic ${d.flag ? "isflag" : "isart"}">${ok ? "" : `<span class="ph">${c[1]}</span>`}<img src="${src}" alt="${esc(c[0])}" fetchpriority="high" class="${ok ? "ready" : ""}" onload="this.classList.add('ready')" onerror="this.remove()"></div>`;
 }
 function ttCard(d, id, o = {}) {
   const c = d.cards[id], tag = o.pick ? "button" : "div";
@@ -1496,6 +1514,8 @@ app.addEventListener("input", e => {
 });
 
 // ===== START =====
+// keep pictures saved on the phone so they appear instantly next time
+if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => { });
 (function boot() {
   const j = (P.get("join") || "").toUpperCase().replace(/[^A-Z]/g, "");
   if (j.length === 4) {

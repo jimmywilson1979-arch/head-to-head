@@ -315,6 +315,10 @@ button.ttrow:active { transform: translateY(2px); box-shadow: inset 0 0 0 3px va
 .ttpic.isflag { display: grid; place-items: center; padding: 14px 0; background: radial-gradient(circle, #fff 0%, #dfe8f7 75%); }
 .ttpic.isflag img { width: 62%; aspect-ratio: 4/3; object-fit: cover; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,.25), 0 0 0 1px rgba(0,0,0,.1); display: block; }
 .ttcard.mini .ttpic.isflag { padding: 8px 0; }
-.ttpic.isart { padding: 0; overflow: hidden; line-height: 0; background: #dfe8f7; }
-.ttpic.isart img { width: 100%; aspect-ratio: 5/4; object-fit: cover; object-position: 50% 22%; display: block; }
+.ttpic.isart { padding: 0; overflow: hidden; line-height: 0; background: #dfe8f7; position: relative; aspect-ratio: 5/4; }
+.ttpic.isart img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 22%; display: block; position: relative; }
+.ttpic img { opacity: 0; transition: opacity .25s; } .ttpic img.ready { opacity: 1; }
+.ttpic .ph { position: absolute; inset: 0; display: grid; place-items: center; line-height: 1; font-size: 64px; opacity: .8; }
+.ttcard.mini .ttpic .ph { font-size: 40px; }
+.ttpic.isflag { position: relative; }
 .ttico i { background-size: cover; background-position: center 30%; }
