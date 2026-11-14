@@ -706,10 +706,23 @@ function boardRPS(c) {
   return arena + sc + picker + strip;
 }
 
+function fmtNum(v) {
+  const a = Math.abs(v);
+  if (a >= 1e9) return +(v / 1e9).toFixed(2) + "bn";
+  if (a >= 1e6) return +(v / 1e6).toFixed(a >= 1e7 ? 1 : 2) + "m";
+  return v.toLocaleString("en-GB", { maximumFractionDigits: 3 });
+}
 function fmtStat(v, u) {
-  if (u === "kg") return v < 1 ? Math.round(v * 1000) + " g" : v.toLocaleString("en-GB") + " kg";
-  if (u === "/10") return v + "/10";
-  return v.toLocaleString("en-GB") + " " + u;
+  switch (u) {
+    case "kg": return v < 1 ? Math.round(v * 1000) + " g" : v >= 1000 ? +(v / 1000).toFixed(v >= 10000 ? 0 : 1) + " t" : v.toLocaleString("en-GB") + " kg";
+    case "people": return fmtNum(v);
+    case "mkm": return v >= 1000 ? +(v / 1000).toFixed(1) + "bn km" : v + "m km";
+    case "mya": return v + "m yrs ago";
+    case "°C": return v.toLocaleString("en-GB") + "°C";
+    case "/10": case "/100": return v + u;
+    case "": return fmtNum(v);
+    default: return fmtNum(v) + " " + u;
+  }
 }
 function ttCard(d, id, o = {}) {
   const c = d.cards[id], tag = o.pick ? "button" : "div";
@@ -739,7 +752,7 @@ function boardTT(c) {
   return h + `<div class="ttinfo">${info}</div><p class="center small mut" style="margin-top:6px">${d.icon} ${esc(d.name)}: ${esc(d.note)}</p>`;
 }
 function deckPicker(sel, attr) {
-  return `<div class="seg decks">${Object.values(GAMES.tt.DECKS).map(d => `<button class="${sel === d.id ? "on" : ""}" ${attr}="${d.id}">${d.icon} ${esc(d.name)}</button>`).join("")}<button disabled>More themes soon</button></div>`;
+  return `<div class="seg decks">${Object.values(GAMES.tt.DECKS).map(d => `<button class="${sel === d.id ? "on" : ""}" ${attr}="${d.id}">${d.icon} ${esc(d.name)}</button>`).join("")}</div>`;
 }
 
 function renderGame() {

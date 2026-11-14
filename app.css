@@ -228,5 +228,5 @@ button.ttrow:active { transform: translateY(2px); box-shadow: inset 0 0 0 3px va
 .ttbackin { flex: 1; display: grid; place-items: center; }
 .ttbackin span { font: 700 64px "Fredoka"; color: var(--c); opacity: .8; }
 .ttinfo { text-align: center; color: var(--mut); font-size: 14px; margin-top: 12px; min-height: 18px; }
-.seg.decks { flex-wrap: wrap; }
-.seg.decks button[disabled] { opacity: .5; font-size: 13px; }
+.seg.decks { display: grid; grid-template-columns: repeat(3, 1fr); }
+.seg.decks button { font-size: 14px; padding: 10px 4px; }
