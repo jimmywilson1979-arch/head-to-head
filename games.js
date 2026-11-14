@@ -242,7 +242,7 @@
   const DECKS = {
     animals: {
       id: "animals", name: "Animals", icon: "🦁",
-      note: "Rough figures for a big adult. Size is the longest measurement (nose to tail, height or wingspan).",
+      note: "Rough figures for a big adult. Size is the longest measurement (nose to tail, height or wingspan).", img: art("nature"),
       stats: [{ l: "Top speed", u: "mph" }, { l: "Weight", u: "kg" }, { l: "Lifespan", u: "yrs" }, { l: "Size", u: "cm" }, { l: "Danger", u: "/10" }],
       cards: [
         ["Cheetah", "🐆", 70, 54, 12, 200, 5], ["Lion", "🦁", 50, 190, 15, 300, 9], ["Tiger", "🐅", 40, 220, 15, 310, 9],
@@ -309,7 +309,7 @@
     },
     sea: {
       id: "sea", name: "Sea life", icon: "🐙",
-      note: "Rough figures for a big adult. Speeds are the fastest commonly quoted. Lots of deep-sea facts are best guesses!",
+      note: "Rough figures for a big adult. Speeds are the fastest commonly quoted. Lots of deep-sea facts are best guesses!", img: art("nature"),
       stats: [{ l: "Top speed", u: "mph" }, { l: "Weight", u: "kg" }, { l: "Length", u: "cm" }, { l: "Deepest dive", u: "m" }, { l: "Danger", u: "/10" }],
       cards: [
         ["Blue whale", "🐋", 20, 150000, 2900, 500, 2], ["Sperm whale", "🐋", 23, 45000, 1600, 2250, 4], ["Humpback whale", "🐳", 17, 30000, 1600, 240, 2],
