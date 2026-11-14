@@ -30,13 +30,17 @@ if (!ME.id) { ME.id = uid(); ls.set("h2h_pid", ME.id); }
 const PREF = Object.assign({ game: "ttt", level: "medium", sound: true }, ls.get("h2h_pref", {}));
 const savePref = () => ls.set("h2h_pref", PREF);
 
+
 // ===== APP STATE =====
 let MODE = "home";          // home | join | host | guest | cpu | ended
-let S = null;               // the game (host & cpu: the real one; guest: copy from the host)
+let S = null;               // the game (host & cpu: the real one; guest: the host's copy, minus secrets)
 let T = null;               // live connection
 let conn = "off";           // off | connecting | ok | lost
 let lastSeen = 0, joinedAt = 0, pending = null, cpuTimer = null, animKey = "", showQR = false, leaveArm = 0, endedMsg = "";
 let qrCache = { url: null, img: null };
+let DRAFT = { k: "", ships: null };   // Battleships: fleet being placed
+let MYPICK = { k: "", v: null };      // Rock Paper Scissors: what a guest picked
+let REVEAL = { k: "", until: 0 };     // Rock Paper Scissors: hands shaking
 
 // ===== SOUND & BUZZ =====
 const Snd = {
@@ -45,15 +49,31 @@ const Snd = {
     if (!this.ctx) { try { this.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { } }
     if (this.ctx && this.ctx.state === "suspended") this.ctx.resume();
   },
-  tone(f, d = .12, type = "sine", v = .14, when = 0) {
+  tone(f, d = .12, type = "sine", v = .14, when = 0, f2) {
     const c = this.ctx; if (!c || !PREF.sound) return;
     const o = c.createOscillator(), g = c.createGain(), t = c.currentTime + when;
-    o.type = type; o.frequency.setValueAtTime(f, t);
+    o.type = type; o.frequency.setValueAtTime(f, t); if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + d);
     g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(.0008, t + d);
     o.connect(g).connect(c.destination); o.start(t); o.stop(t + d + .03);
   },
+  noise(d = .4, v = .2, when = 0, freq = 800) {
+    const c = this.ctx; if (!c || !PREF.sound) return;
+    const n = Math.floor(c.sampleRate * d), buf = c.createBuffer(1, n, c.sampleRate), ch = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) ch[i] = (Math.random() * 2 - 1) * (1 - i / n);
+    const src = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain(), t = c.currentTime + when;
+    f.type = "lowpass"; f.frequency.value = freq; g.gain.value = v;
+    src.buffer = buf; src.connect(f).connect(g).connect(c.destination); src.start(t);
+  },
   place(seat) { this.tone(seat ? 620 : 420, .09, "triangle", .16); this.tone(seat ? 930 : 630, .06, "sine", .06, .02); },
   drop(rows) { const d = .18 + rows * .055; this.tone(220, .08, "triangle", .18, d); this.tone(160, .1, "sine", .12, d + .01); },
+  line() { this.tone(700, .05, "triangle", .12); },
+  box() { this.tone(660, .09, "triangle", .14); this.tone(990, .14, "triangle", .12, .08); },
+  miss() { this.noise(.45, .18, 0, 600); this.tone(300, .25, "sine", .05, 0, 120); },
+  hit() { this.noise(.6, .35, 0, 1400); this.tone(90, .35, "sine", .25, 0, 40); },
+  sunk() { this.hit(); [392, 330, 262, 196].forEach((f, i) => this.tone(f, .2, "square", .05, .25 + i * .12)); },
+  pick() { this.tone(520, .05, "square", .06); },
+  ready() { this.tone(523, .08, "triangle", .1); this.tone(784, .12, "triangle", .1, .08); },
+  shake() { [0, .33, .66].forEach(w => this.tone(140, .08, "sine", .2, w)); this.tone(880, .12, "triangle", .12, 1.0); },
   win() { [523, 659, 784, 1047].forEach((f, i) => this.tone(f, .2, "triangle", .14, i * .11)); },
   lose() { [392, 330, 262].forEach((f, i) => this.tone(f, .22, "sine", .12, i * .15)); },
   draw() { this.tone(440, .14, "sine", .12); this.tone(440, .14, "sine", .12, .18); },
@@ -113,40 +133,48 @@ function setConn(s) {
   const was = conn; conn = s;
   if (s === "ok") {
     if (MODE === "guest") sendHello();
-    if (MODE === "host" && S) T.send({ t: "state", s: S });
+    if (MODE === "host" && S) sendState();
   }
   if (was !== s) render();
 }
 function sendHello() { if (T) T.send({ t: "hello", pid: ME.id, name: ME.name || "Player" }); }
+// Everyone gets the board, never the secrets (ships, picks): those stay on the host's phone.
+function pub(s) { const o = Object.assign({}, s); delete o.sec; return o; }
+function sendState() { if (T && S) T.send({ t: "state", s: pub(S) }); }
 
 // ===== GAME ENGINE (host and computer games) =====
 function newState(game, room) {
   return { sid: uid(), v: 0, room, game, host: ME.id, players: [], seats: [null, null], queue: [], phase: "lobby",
-    board: null, turn: 0, starter: 0, result: null, last: -1, moves: 0, round: 0, draws: 0, level: PREF.level };
+    board: null, sec: {}, turn: 0, starter: 0, result: null, last: null, lastBy: -1, fx: null, moves: 0, round: 0, draws: 0,
+    level: PREF.level, acks: {} };
 }
 const pl = id => S && S.players.find(p => p.id === id);
 const nameOf = id => (pl(id) || {}).name || "Player";
 const mySeat = () => S ? S.seats.indexOf(ME.id) : -1;
+const G = () => GAMES[S.game];
+const waiting = seat => !!S && S.phase === "play" && seat >= 0 && G().waiting(S, seat);
+const secKey = () => S.sid + ":" + S.round;
 
 function startRound() {
-  const g = GAMES[S.game];
-  S.board = g.blank(); S.turn = S.starter; S.result = null; S.last = -1; S.moves = 0; S.round++; S.phase = "play";
+  S.result = null; S.last = null; S.lastBy = -1; S.fx = null; S.moves = 0; S.round++; S.phase = "play";
+  G().init(S);
 }
 function startFromLobby() {
   const ids = S.players.map(p => p.id);
   S.seats = [ids[0], ids[1]]; S.queue = ids.slice(2); S.starter = 0; startRound();
 }
 function applyMove(pid, mv, n) {
-  if (!S || S.phase !== "play" || S.seats[S.turn] !== pid) return false;
-  if (n != null && n !== S.moves) return false;
-  const g = GAMES[S.game], i = g.place(S.board, mv);
-  if (i < 0) return false;
-  S.board[i] = S.turn; S.last = i; S.moves++;
-  const r = g.result(S.board, i);
-  if (r) {
-    S.result = r; S.phase = "over";
-    if (r.w === "draw") S.draws++; else { const p = pl(S.seats[r.w]); if (p) p.wins++; }
-  } else S.turn = 1 - S.turn;
+  if (!S || S.phase !== "play") return false;
+  const seat = S.seats.indexOf(pid);
+  if (seat < 0 || !G().waiting(S, seat)) return false;
+  if (n != null && S.turn >= 0 && n !== S.moves) return false;
+  const fx = G().move(S, seat, mv);
+  if (!fx) return false;
+  S.moves++; S.fx = fx; S.lastBy = seat;
+  if (S.result) {
+    S.phase = "over";
+    if (S.result.w === "draw") S.draws++; else { const p = pl(S.seats[S.result.w]); if (p) p.wins++; }
+  }
   return true;
 }
 function nextRound() {
@@ -167,38 +195,62 @@ function removePlayer(id) {
 }
 function commit() {
   S.v++;
-  if (MODE === "host") { ls.set("h2h_host", { S, t: Date.now() }); if (T) T.send({ t: "state", s: S }); }
-  if (MODE === "cpu") ls.set("h2h_cpu", { S, t: Date.now() });
+  if (MODE === "host") { ls.set("h2h_host", { S, t: Date.now() }); sendState(); }
   render();
   maybeCPU();
 }
 function maybeCPU() {
-  if (MODE !== "cpu" || !S || S.phase !== "play" || S.seats[S.turn] !== "cpu" || cpuTimer) return;
+  if (MODE !== "cpu" || !S || S.phase !== "play" || cpuTimer) return;
+  const cs = S.seats.indexOf("cpu");
+  if (cs < 0 || !G().waiting(S, cs)) return;
+  const placing = S.game === "bs" && S.board.stage === "place";
+  const extra = S.game === "rps" && REVEAL.until > Date.now() ? REVEAL.until - Date.now() : 0;
   cpuTimer = setTimeout(() => {
     cpuTimer = null;
-    if (MODE !== "cpu" || S.phase !== "play" || S.seats[S.turn] !== "cpu") return;
-    const mv = GAMES[S.game].ai(S.board.slice(), S.turn, S.level);
-    const before = S.phase;
-    if (applyMove("cpu", mv, S.moves)) { moveSound(); if (S.phase === "over" && before !== "over") resultFx(); commit(); }
-  }, 520 + Math.random() * 380);
+    if (MODE !== "cpu" || !S || S.phase !== "play" || !G().waiting(S, cs)) return;
+    const mv = G().ai(S, cs, S.level);
+    if (applyMove("cpu", mv, S.turn >= 0 ? S.moves : null)) { afterMove(); commit(); }
+  }, (placing ? 250 : S.game === "dots" ? 420 + Math.random() * 300 : 520 + Math.random() * 380) + extra);
 }
 
 // ===== FEEDBACK =====
-function moveSound() {
-  if (!S || S.last < 0) return;
-  if (S.game === "c4") Snd.drop(Math.floor(S.last / 7) + 1); else Snd.place(S.board[S.last]);
+function playFx(s) {
+  switch (s.fx) {
+    case "place": Snd.place(s.lastBy); break;
+    case "drop": Snd.drop(Math.floor(s.last / 7) + 1); break;
+    case "line": Snd.line(); break;
+    case "box": Snd.box(); break;
+    case "miss": Snd.miss(); break;
+    case "hit": Snd.hit(); buzz(60); break;
+    case "sunk": Snd.sunk(); buzz([80, 50, 120]); break;
+    case "pick": Snd.pick(); break;
+    case "ready": Snd.ready(); break;
+    case "reveal": {
+      REVEAL = { k: s.sid + ":" + s.round + ":" + s.board.hist.length, until: Date.now() + 1100 };
+      Snd.shake(); setTimeout(() => { if (MODE !== "home") render(); }, 1150); break;
+    }
+  }
 }
 function resultFx() {
   const r = S.result; if (!r) return;
-  if (r.w === "draw") { Snd.draw(); return; }
-  const me = mySeat();
-  if (me < 0 || r.w === me) { Snd.win(); confetti(); buzz([60, 40, 60]); } else { Snd.lose(); buzz(200); }
+  const run = () => {
+    if (!S || !S.result) return;
+    if (r.w === "draw") { Snd.draw(); return; }
+    const me = mySeat();
+    if (me < 0 || r.w === me) { Snd.win(); confetti(); buzz([60, 40, 60]); } else { Snd.lose(); buzz(200); }
+  };
+  if (S.fx === "reveal" || S.fx === "sunk") setTimeout(run, S.fx === "reveal" ? 1150 : 700); else run();
+}
+function afterMove() { // sounds for the host and computer games
+  playFx(S);
+  if (S.phase === "over") resultFx();
+  else if (S.lastBy !== mySeat() && waiting(mySeat())) buzz(35);
 }
 
 // ===== HOST =====
 function startHosting(existing) {
   MODE = "host"; showQR = false;
-  if (existing) S = existing;
+  if (existing) { S = existing; S.acks = S.acks || {}; S.sec = S.sec || {}; }
   else {
     S = newState(PREF.game, roomCode());
     S.players.push({ id: ME.id, name: ME.name || "Player 1", wins: 0 });
@@ -219,11 +271,11 @@ function hostMsg(m) {
     return commit();
   }
   if (m.t === "move") {
-    const before = S.phase;
-    if (applyMove(m.pid, m.mv, m.n)) {
-      moveSound(); if (S.phase === "over" && before !== "over") resultFx(); else if (S.seats[S.turn] === ME.id) buzz(35);
-      commit();
-    } else T.send({ t: "state", s: S });
+    if (m.mid && S.acks[m.pid] === m.mid) { sendState(); return; } // already done (a resend)
+    const ok = applyMove(m.pid, m.mv, m.n);
+    if (m.mid) S.acks[m.pid] = m.mid;
+    if (ok) afterMove();
+    commit();
     return;
   }
   if (m.t === "again") { if (S.phase === "over" && S.seats.includes(m.pid)) { nextRound(); commit(); } return; }
@@ -231,6 +283,7 @@ function hostMsg(m) {
 }
 
 // ===== GUEST =====
+let joinCode = "";
 function startJoining(code) {
   MODE = "guest"; S = null; lastSeen = 0; joinedAt = Date.now(); pending = null;
   ME.name = cleanName(ME.name) || "Player"; ls.set("h2h_name", ME.name);
@@ -238,7 +291,6 @@ function startJoining(code) {
   conn = "connecting"; T = connect(code, guestMsg, setConn);
   keepAwake(); render();
 }
-let joinCode = "";
 function guestMsg(m) {
   if (!m) return;
   if (m.t === "state") {
@@ -246,15 +298,16 @@ function guestMsg(m) {
     lastSeen = Date.now();
     if (prev && s.sid === prev.sid && s.v < prev.v) return;
     if (pending) {
-      if (s.moves !== pending.n || s.round !== pending.round || s.phase !== "play") pending = null;
-      else if (Date.now() - pending.first < 6000) return; // host hasn't got my move yet; keep showing it
-      else pending = null;
+      if (s.acks && s.acks[ME.id] === pending.mid) pending = null;
+      else if (prev && GAMES[prev.game].local && s.sid === prev.sid && Date.now() - pending.first < 6000) return; // keep showing my move until the host has it
     }
     S = s;
     if (!prev || prev.sid !== s.sid) { render(); return; }
-    const newMove = s.round === prev.round ? s.moves > prev.moves : s.moves > 0;
-    if (newMove && s.last >= 0) { moveSound(); if (s.phase === "play" && s.seats[s.turn] === ME.id) buzz(35); }
+    const me = s.seats.indexOf(ME.id);
+    const newMove = s.round === prev.round && s.moves > prev.moves;
+    if (newMove && !(s.lastBy === me && GAMES[s.game].local)) playFx(s);
     if (s.phase === "over" && (prev.phase !== "over" || prev.round !== s.round)) resultFx();
+    else if (s.phase === "play" && waiting(me) && !(prev.phase === "play" && prev.round === s.round && GAMES[prev.game].waiting(prev, me))) buzz(35);
     if (!s.players.some(p => p.id === ME.id) && prev.players.some(p => p.id === ME.id)) { endGuest("The host removed you from the game."); return; }
     render();
     return;
@@ -264,6 +317,10 @@ function guestMsg(m) {
 }
 function endGuest(msg) {
   if (T) T.close(); T = null; S = null; MODE = "ended"; endedMsg = msg; render();
+}
+function sendMove(mv, n) {
+  pending = { mid: uid(), mv, n, t: Date.now(), first: Date.now() };
+  T.send({ t: "move", pid: ME.id, mv, n, mid: pending.mid });
 }
 
 // ===== COMPUTER GAME =====
@@ -276,19 +333,22 @@ function startCPU() {
 
 // ===== MY ACTIONS =====
 function myMove(mv) {
-  if (!S || S.phase !== "play" || S.seats[S.turn] !== ME.id) return;
-  const g = GAMES[S.game];
-  if (g.place(S.board, mv) < 0) return;
+  if (!S || S.phase !== "play") return;
+  const me = mySeat(), g = G();
+  if (me < 0 || !g.waiting(S, me)) return;
+  const n = S.turn >= 0 ? S.moves : null;
   if (MODE === "guest") {
     if (pending) return;
-    pending = { mv, n: S.moves, round: S.round, t: Date.now(), first: Date.now() };
-    T.send({ t: "move", pid: ME.id, mv, n: S.moves });
-    applyMove(ME.id, mv, S.moves); // show it straight away; the host's copy confirms it
-    moveSound(); if (S.phase === "over") resultFx(); render();
-    return;
+    if (g.local) { // show it straight away; the host's copy confirms it
+      if (!applyMove(ME.id, mv, n)) return;
+      sendMove(mv, n); playFx(S); if (S.phase === "over") resultFx();
+      render(); return;
+    }
+    if (mv && mv.ships) ls.set("h2h_mysec", { k: secKey(), ships: mv.ships });
+    if (typeof mv === "string") MYPICK = { k: secKey() + ":" + S.board.hist.length, v: mv };
+    sendMove(mv, n); Snd.pick(); render(); return;
   }
-  const before = S.phase;
-  if (applyMove(ME.id, mv, S.moves)) { moveSound(); if (S.phase === "over" && before !== "over") resultFx(); commit(); }
+  if (applyMove(ME.id, mv, n)) { afterMove(); commit(); }
 }
 function playAgain() {
   if (!S || S.phase !== "over") return;
@@ -299,22 +359,37 @@ function leave() {
   if (Date.now() - leaveArm > 3000 && MODE !== "cpu" && S && S.players.length > 1) { leaveArm = Date.now(); toast(MODE === "host" ? "Tap Leave again to end the game for everyone" : "Tap Leave again to leave"); return; }
   if (MODE === "host") { if (T) T.send({ t: "ended" }); ls.del("h2h_host"); }
   if (MODE === "guest" && T) T.send({ t: "bye", pid: ME.id });
-  if (MODE === "cpu") ls.del("h2h_cpu");
   clearTimeout(cpuTimer); cpuTimer = null;
-  setTimeout(() => { if (T) T.close(); T = null; }, 300);
-  S = null; MODE = "home"; conn = "off"; showQR = false;
+  const t = T; setTimeout(() => { if (t) t.close(); }, 300); T = null;
+  S = null; MODE = "home"; conn = "off"; showQR = false; pending = null;
   if (location.search) history.replaceState(null, "", location.pathname + (LOCAL ? "?local" : ""));
   render();
 }
+// secrets this phone knows about itself
+function myFleet() {
+  const me = mySeat(); if (me < 0) return null;
+  if (MODE !== "guest") return S.sec && S.sec[me];
+  const v = ls.get("h2h_mysec", null);
+  if (v && v.k === secKey()) return v.ships;
+  return S.board.reveal ? S.board.reveal[me] : null;
+}
+function myPick() {
+  const me = mySeat(); if (me < 0) return null;
+  if (MODE !== "guest") return S.sec && S.sec[me];
+  return MYPICK.k === secKey() + ":" + S.board.hist.length ? MYPICK.v : null;
+}
+function draftFleet() {
+  if (DRAFT.k !== secKey() || !DRAFT.ships) DRAFT = { k: secKey(), ships: GAMES.bs.randomFleet() };
+  return DRAFT.ships;
+}
 
 // ===== TIMERS =====
-setInterval(() => {
-  if (MODE === "host" && T && S) T.send({ t: "state", s: S });
-}, 4000);
+setInterval(() => { if (MODE === "host") sendState(); }, 4000);
 setInterval(() => {
   if (MODE === "guest" && T) {
     if (conn === "ok" && Date.now() - lastSeen > 6000) sendHello();
-    if (pending && Date.now() - pending.t > 2500 && conn === "ok") { pending.t = Date.now(); T.send({ t: "move", pid: ME.id, mv: pending.mv, n: pending.n }); }
+    if (pending && Date.now() - pending.first > 12000) { pending = null; render(); }
+    else if (pending && Date.now() - pending.t > 2500 && conn === "ok") { pending.t = Date.now(); T.send({ t: "move", pid: ME.id, mv: pending.mv, n: pending.n, mid: pending.mid }); }
     if (!S || Date.now() - lastSeen > 9000) render();
   }
   if ((MODE === "host" || MODE === "guest") && T && conn === "lost") T.revive();
@@ -324,7 +399,7 @@ document.addEventListener("visibilitychange", () => {
   keepAwake();
   if ((MODE === "host" || MODE === "guest") && T) {
     if (conn !== "ok") T.revive();
-    if (MODE === "guest") sendHello(); else if (S) T.send({ t: "state", s: S });
+    if (MODE === "guest") sendHello(); else sendState();
   }
 });
 
@@ -332,15 +407,24 @@ document.addEventListener("visibilitychange", () => {
 const svgX = (cls = "") => `<svg class="mark ${cls}" viewBox="0 0 100 100"><line x1="18" y1="18" x2="82" y2="82" stroke="var(--c)"/><line x1="82" y1="18" x2="18" y2="82" stroke="var(--c)"/></svg>`;
 const svgO = (cls = "") => `<svg class="mark ${cls}" viewBox="0 0 100 100"><circle cx="50" cy="50" r="33" stroke="var(--c)"/></svg>`;
 const disc = () => `<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" fill="var(--c)"/><circle cx="50" cy="50" r="30" fill="none" stroke="rgba(0,0,0,.18)" stroke-width="6"/></svg>`;
-function markFor(game, seat) { return game === "c4" ? disc() : seat === 0 ? svgX() : svgO(); }
+const HAND = { r: "✊", p: "✋", s: "✌️" }, HAND_NAME = { r: "Rock", p: "Paper", s: "Scissors" };
+const BEAT_TEXT = { rs: "Rock blunts scissors", pr: "Paper wraps rock", sp: "Scissors cut paper" };
+function markFor(game, seat) {
+  if (game === "ttt") return seat === 0 ? svgX() : svgO();
+  if (game === "dots") return `<svg viewBox="0 0 100 100"><rect x="14" y="14" width="72" height="72" rx="8" fill="var(--c)" opacity=".85"/></svg>`;
+  if (game === "bs") return `<svg viewBox="0 0 100 100"><path d="M10 58h80l-12 18H22z" fill="var(--c)"/><rect x="34" y="40" width="30" height="16" rx="3" fill="var(--c)"/><rect x="46" y="26" width="6" height="16" fill="var(--c)"/></svg>`;
+  if (game === "rps") return `<span style="font-size:24px;line-height:1">${seat ? "✋" : "✊"}</span>`;
+  return disc();
+}
 const GAME_ICON = {
   ttt: `<svg viewBox="0 0 120 120"><g stroke="#3a4680" stroke-width="6" stroke-linecap="round"><line x1="43" y1="12" x2="43" y2="108"/><line x1="77" y1="12" x2="77" y2="108"/><line x1="12" y1="43" x2="108" y2="43"/><line x1="12" y1="77" x2="108" y2="77"/></g><g stroke="#ff5d73" stroke-width="8" stroke-linecap="round"><line x1="16" y1="16" x2="36" y2="36"/><line x1="36" y1="16" x2="16" y2="36"/><line x1="84" y1="84" x2="104" y2="104"/><line x1="104" y1="84" x2="84" y2="104"/></g><circle cx="60" cy="60" r="11" fill="none" stroke="#ffd23f" stroke-width="8"/><circle cx="94" cy="26" r="11" fill="none" stroke="#ffd23f" stroke-width="8"/></svg>`,
   c4: `<svg viewBox="0 0 120 104"><rect x="4" y="4" width="112" height="96" rx="14" fill="#2449d8"/>${[0, 1, 2, 3].map(r => [0, 1, 2, 3, 4].map(c => { const f = ({ "3,1": "#ff5d73", "3,2": "#ffd23f", "3,3": "#ff5d73", "2,2": "#ff5d73", "2,3": "#ffd23f", "1,3": "#ffd23f", "2,1": "#ffd23f" })[r + "," + c] || "#0b1230"; return `<circle cx="${20 + c * 20}" cy="${21 + r * 21}" r="8" fill="${f}"/>`; }).join("")).join("")}</svg>`,
+  dots: `<svg viewBox="0 0 120 120"><rect x="16" y="16" width="44" height="44" fill="#ff5d73" opacity=".35"/><rect x="60" y="60" width="44" height="44" fill="#ffd23f" opacity=".35"/><g stroke-width="6" stroke-linecap="round"><path d="M16 16H60V60H16Z" stroke="#ff5d73" fill="none"/><path d="M60 60H104V104H60Z" stroke="#ffd23f" fill="none"/><path d="M60 16H104" stroke="#ff5d73"/><path d="M16 60V104" stroke="#ffd23f"/></g>${[16, 60, 104].map(y => [16, 60, 104].map(x => `<circle cx="${x}" cy="${y}" r="7" fill="#eef2ff"/>`).join("")).join("")}</svg>`,
+  bs: `<svg viewBox="0 0 120 120"><rect x="6" y="6" width="108" height="108" rx="12" fill="#12306b"/><g stroke="#2a4f9a" stroke-width="2">${[1, 2, 3, 4].map(k => `<line x1="${6 + k * 21.6}" y1="6" x2="${6 + k * 21.6}" y2="114"/><line x1="6" y1="${6 + k * 21.6}" x2="114" y2="${6 + k * 21.6}"/>`).join("")}</g><rect x="12" y="34" width="62" height="16" rx="8" fill="#9aa6c8"/><rect x="77" y="56" width="16" height="40" rx="8" fill="#9aa6c8"/><circle cx="41" cy="42" r="9" fill="#ff5d73"/><circle cx="60" cy="85" r="4" fill="#eef2ff"/><circle cx="25" cy="98" r="4" fill="#eef2ff"/></svg>`,
+  rps: `<div style="font-size:30px;line-height:54px;letter-spacing:-2px">✊✋✌️</div>`,
 };
 
-function joinURL(room) {
-  return location.origin + location.pathname + "?join=" + room + (LOCAL ? "&local" : "");
-}
+function joinURL(room) { return location.origin + location.pathname + "?join=" + room + (LOCAL ? "&local" : ""); }
 function qrImg(url) {
   if (qrCache.url === url) return qrCache.img;
   let out = "";
@@ -381,7 +465,8 @@ const soundBtn = () => `<button class="iconbtn" data-act="sound">${PREF.sound ? 
 
 function renderHome() {
   const saved = ls.get("h2h_host", null);
-  const resume = saved && saved.S && Date.now() - saved.t < 3 * 3600e3 && saved.S.players.length > 1 ? saved : null;
+  const resume = saved && saved.S && GAMES[saved.S.game] && Date.now() - saved.t < 3 * 3600e3 && saved.S.players.length > 1 ? saved : null;
+  if (!GAMES[PREF.game]) PREF.game = "ttt";
   app.innerHTML = `
   <div class="top"><span></span>${soundBtn()}</div>
   <div class="logo"><h1><span class="a">Head</span><span class="vs">to</span><span class="b">Head</span></h1><p>Phone vs phone. Scan, join, play.</p></div>
@@ -472,7 +557,7 @@ function inviteBlock() {
 function renderLobby() {
   const host = MODE === "host", n = S.players.length;
   app.innerHTML = `
-  <div class="top"><span class="t">${esc(GAMES[S.game].name)}</span>${soundBtn()}</div>
+  <div class="top"><span class="t">${esc(G().name)}</span>${soundBtn()}</div>
   ${connBanner()}
   ${host ? inviteBlock() : `<div class="card center" style="padding:24px 16px"><div style="font-size:42px" class="wait">✅</div><h2 style="margin:8px 0 4px">You're in!</h2><p class="mut">Waiting for ${esc(nameOf(S.host))} to start the game.</p></div>`}
   <div class="card">
@@ -486,62 +571,186 @@ function renderLobby() {
   <div class="foot"><button class="iconbtn" data-act="leave">Leave</button></div>`;
 }
 
+// ----- boards -----
+function boardTTT(c) {
+  return `<div class="ttt">${S.board.map((v, i) => {
+    const can = c.myTurn && v == null;
+    const inner = v == null ? "" : (v === 0 ? svgX(c.animate && i === S.last ? "draw" : "") : svgO(c.animate && i === S.last ? "draw" : ""));
+    return `<button class="${v != null ? "p" + v : ""} ${can ? "can" : ""} ${c.winLine.includes(i) ? "win" : ""}" ${can ? `data-mv="${i}"` : ""} aria-label="Square ${i + 1}">${inner}</button>`;
+  }).join("")}</div>`;
+}
+function boardC4(c) {
+  const g = GAMES.c4, W = g.cols, H = g.rows; let cells = "";
+  for (let r = 0; r < H; r++) for (let col = 0; col < W; col++) {
+    const i = r * W + col, v = S.board[i], can = c.myTurn && S.board[col] == null;
+    cells += `<button ${can ? `data-mv="${col}"` : ""} aria-label="Column ${col + 1}">${v != null ? `<i class="pc p${v} ${c.animate && i === S.last ? "drop" : ""} ${c.winLine.includes(i) ? "win" : ""}" style="--f:${r + 1}"></i>` : ""}</button>`;
+  }
+  const arrows = c.myTurn ? Array.from({ length: W }, (_, col) => `<i>${S.board[col] == null ? "▼" : ""}</i>`).join("") : "";
+  return `<div class="c4wrap"><div class="c4arrows p${S.turn}">${arrows}</div><div class="c4 ${c.myTurn ? "can" : ""}">${cells}</div></div>`;
+}
+function boardDots(c) {
+  const g = GAMES.dots, b = S.board, R = g.R, C = g.C, sp = 80, m = 22, Wd = C * sp + 2 * m, Ht = R * sp + 2 * m;
+  let boxes = "", lines = "", hits = "", dots = "";
+  b.box.forEach((v, bi) => {
+    if (v == null) return;
+    const r = Math.floor(bi / C), col = bi % C, x = m + col * sp, y = m + r * sp;
+    const who = nameOf(S.seats[v]);
+    boxes += `<g class="p${v}"><rect x="${x + 5}" y="${y + 5}" width="${sp - 10}" height="${sp - 10}" rx="8" style="fill:var(--c)" opacity=".3"/><text x="${x + sp / 2}" y="${y + sp / 2 + 11}" text-anchor="middle" class="bxl" style="fill:var(--c)">${esc((who || "?")[0].toUpperCase())}</text></g>`;
+  });
+  for (let e = 0; e < g.E; e++) {
+    let x1, y1, x2, y2;
+    if (e < g.H) { const r = Math.floor(e / C), col = e % C; x1 = m + col * sp; y1 = m + r * sp; x2 = x1 + sp; y2 = y1; }
+    else { const k = e - g.H, r = Math.floor(k / (C + 1)), col = k % (C + 1); x1 = m + col * sp; y1 = m + r * sp; x2 = x1; y2 = y1 + sp; }
+    const v = b.e[e];
+    if (v != null) lines += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" class="ed p${v} ${c.animate && e === S.last ? "ednew" : ""}" style="stroke:var(--c)"/>`;
+    else {
+      lines += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" class="edfree ${c.myTurn ? "on" : ""}"/>`;
+      if (c.myTurn) { const v = x1 === x2, s = 14, t = 19; hits += v ? `<rect data-mv="${e}" class="edhit" x="${x1 - t}" y="${y1 + s}" width="${2 * t}" height="${sp - 2 * s}" rx="10"/>` : `<rect data-mv="${e}" class="edhit" x="${x1 + s}" y="${y1 - t}" width="${sp - 2 * s}" height="${2 * t}" rx="10"/>`; }
+    }
+  }
+  for (let r = 0; r <= R; r++) for (let col = 0; col <= C; col++) dots += `<circle cx="${m + col * sp}" cy="${m + r * sp}" r="7.5" class="dt"/>`;
+  return `<div class="dotswrap"><svg class="dots" viewBox="0 0 ${Wd} ${Ht}">${boxes}${lines}${dots}${hits}</svg></div>`;
+}
+function bsGrid(cellFn, cls = "") {
+  const N = GAMES.bs.N; let h = "";
+  for (let i = 0; i < N * N; i++) { const x = cellFn(i); h += `<button class="${x.c || ""}" ${x.mv != null ? `data-fire="${x.mv}"` : ""}>${x.t || ""}</button>`; }
+  return `<div class="bsg ${cls}">${h}</div>`;
+}
+function fleetLine(seat) { // ships left for a seat
+  const sunk = S.board.sunk[seat].map(s => s.length), left = sunk.slice();
+  return `<span class="fleet">${GAMES.bs.FLEET.map(L => { const k = left.indexOf(L); const dead = k >= 0; if (dead) left.splice(k, 1); return `<i class="${dead ? "dead" : ""}">${"▮".repeat(L)}</i>`; }).join("")}</span>`;
+}
+function boardBS(c) {
+  const b = S.board, me = c.me, opp = 1 - me;
+  const newCell = (seat, i) => c.animate && S.last && S.last.seat === seat && S.last.cell === i;
+  const targetGrid = (shooter, clickable) => {
+    const shots = b.shots[shooter], sunk = new Set(b.sunk[1 - shooter].flat());
+    const shown = b.reveal ? new Set((b.reveal[1 - shooter] || []).flat()) : new Set();
+    const aim = pending && pending.mv && pending.mv.fire;
+    return bsGrid(i => {
+      const v = shots[i], nw = newCell(shooter, i) ? " new" : "";
+      if (v === "h") return { c: "hit" + (sunk.has(i) ? " sunk" : "") + nw, t: sunk.has(i) ? "✖" : "💥" };
+      if (v === "m") return { c: "miss" + nw, t: "•" };
+      return { c: "sea" + (shown.has(i) ? " ship ghost" : "") + (aim === i ? " aim" : "") + (clickable ? " can" : ""), mv: clickable ? i : null };
+    });
+  };
+  const ownGrid = (seat, ships, mini, draft) => {
+    const own = new Set((ships || []).flat()), shots = b.shots[1 - seat], sunk = new Set(b.sunk[seat].flat());
+    return bsGrid(i => {
+      const v = shots[i], nw = newCell(1 - seat, i) ? " new" : "";
+      if (v === "h") return { c: "hit" + (sunk.has(i) ? " sunk" : "") + nw, t: sunk.has(i) ? "✖" : "💥" };
+      if (v === "m") return { c: "miss" + nw, t: "•" };
+      return { c: own.has(i) ? "ship" + (draft ? " draft" : "") : "sea" };
+    }, mini ? "mini" : "");
+  };
+  if (me < 0) { // watching: both sides, no secrets
+    const a = S.seats[0], z = S.seats[1];
+    return `<div class="bslab">${esc(nameOf(a))} firing at ${esc(nameOf(z))} ${fleetLine(1)}</div>${targetGrid(0, false)}
+      <div class="bslab" style="margin-top:14px">${esc(nameOf(z))} firing at ${esc(nameOf(a))} ${fleetLine(0)}</div>${targetGrid(1, false)}`;
+  }
+  if (b.stage === "place") {
+    if (!b.ready[me] && !(pending && pending.mv && pending.mv.ships)) {
+      return `${ownGrid(me, draftFleet(), false, true)}
+        <p class="center small mut" style="margin:10px 0">Ships: ${GAMES.bs.FLEET.join(", ")} squares long. Shuffle until you're happy.</p>
+        <div class="row"><button class="btn alt" data-act="shuffle">🔀 Shuffle</button><button class="btn green" data-act="ready">✅ Ready</button></div>`;
+    }
+    return `${ownGrid(me, myFleet() || (pending && pending.mv.ships), false)}<p class="center mut" style="margin-top:12px">Your fleet is ready.</p>`;
+  }
+  return `<div class="bslab">${S.phase === "over" ? "Their waters" : c.myTurn ? "Tap to fire 🎯" : "Their waters"} ${fleetLine(opp)}</div>
+    ${targetGrid(me, c.myTurn && !pending)}
+    <div class="bslab" style="margin-top:14px">Your fleet ${fleetLine(me)}</div>
+    ${ownGrid(me, myFleet(), true)}`;
+}
+function revealing() { return S.game === "rps" && REVEAL.k === S.sid + ":" + S.round + ":" + S.board.hist.length && Date.now() < REVEAL.until; }
+function boardRPS(c) {
+  const b = S.board, me = c.me, left = me < 0 ? 0 : me, right = 1 - left, last = b.hist[b.hist.length - 1];
+  const shaking = revealing();
+  let arena = "";
+  if (last || shaking) {
+    const lh = shaking ? "✊" : HAND[left === 0 ? last.a : last.b], rh = shaking ? "✊" : HAND[left === 0 ? last.b : last.a];
+    let line = "";
+    if (!shaking && last) {
+      const lm = left === 0 ? last.a : last.b, rm = left === 0 ? last.b : last.a;
+      if (last.w === "draw") line = `Both ${HAND_NAME[lm]}. Again!`;
+      else {
+        const wm = last.w === 0 ? last.a : last.b, lsm = last.w === 0 ? last.b : last.a;
+        const who = S.seats[last.w] === ME.id ? "you win the round!" : `${esc(nameOf(S.seats[last.w]))} wins the round`;
+        line = `${BEAT_TEXT[wm + lsm]}, ${who}`;
+      }
+    }
+    arena = `<div class="arena ${shaking ? "shaking" : "shown"}"><div class="hand l p${left}">${lh}</div><div class="hand r p${right}">${rh}</div></div>
+      <p class="center rline">${shaking ? "Rock… paper… scissors…" : line}</p>`;
+  } else arena = `<div class="arena idle"><div class="hand l">✊</div><div class="hand r">✋</div></div><p class="center rline mut">Pick at the same time. First to 3 wins</p>`;
+  let picker = "";
+  if (S.phase === "play" && me >= 0) {
+    if (waiting(me) && !pending) picker = `<div class="rps">${["r", "p", "s"].map(k => `<button data-rps="${k}"><span>${HAND[k]}</span><b>${HAND_NAME[k]}</b></button>`).join("")}</div>`;
+    else { const mp = myPick() || (pending && pending.mv); picker = `<p class="center mut" style="margin-top:14px">${mp && HAND[mp] ? `You picked ${HAND[mp]} ` : ""}Waiting for ${esc(nameOf(S.seats[1 - me]))}…</p>`; }
+  }
+  const strip = b.hist.length ? `<div class="hist">${b.hist.map(h => `<span class="${h.w === "draw" ? "" : "p" + h.w}">${HAND[h.a]}${HAND[h.b]}</span>`).join("")}</div>` : "";
+  const sc = `<div class="rscore"><b class="p${left}">${b.score[left]}</b><span>first to 3</span><b class="p${right}">${b.score[right]}</b></div>`;
+  return arena + sc + picker + strip;
+}
+
 function renderGame() {
-  const g = GAMES[S.game], me = mySeat(), over = S.phase === "over";
-  const myTurn = S.phase === "play" && S.seats[S.turn] === ME.id;
+  const g = G(), me = mySeat(), shaking = revealing(), over = S.phase === "over" && !shaking;
+  const myTurn = S.phase === "play" && waiting(me);
   const key = S.sid + ":" + S.round + ":" + S.moves;
-  const animate = key !== animKey && S.last >= 0; animKey = key;
-  const winLine = over && S.result.w !== "draw" ? S.result.line : [];
+  const animate = key !== animKey && S.moves > 0; animKey = key;
+  const winLine = over && S.result.w !== "draw" ? (S.result.line || []) : [];
+  const c = { me, myTurn, animate, winLine };
 
   const chip = (seat, side) => {
     const id = S.seats[seat], p = pl(id) || { name: "?" };
-    const isTurn = S.phase === "play" && S.turn === seat;
+    const w = S.phase === "play" && g.waiting(S, seat), simul = S.turn < 0;
     const label = id === ME.id ? "You" : esc(p.name);
-    const sub = S.phase === "play" ? (isTurn ? (id === "cpu" ? "thinking…" : "to play") : "") : over && S.result.w === seat ? "wins!" : "";
-    return `<div class="chip p${seat} ${side} ${isTurn ? "turn" : ""}"><span class="mk">${markFor(S.game, seat)}</span><span class="nm"><b>${label}</b><span>${sub}&nbsp;</span></span></div>`;
+    let sub = "";
+    if (S.phase === "play") sub = w ? (simul ? "choosing…" : id === "cpu" ? "thinking…" : "to play") : simul ? "ready ✓" : "";
+    else if (over && S.result.w === seat) sub = "wins!";
+    if (S.game === "dots" && !(over && S.result.w === seat)) sub = `${S.board.score[seat]} box${S.board.score[seat] === 1 ? "" : "es"}`;
+    return `<div class="chip p${seat} ${side} ${w && !simul ? "turn" : ""}"><span class="mk">${markFor(S.game, seat)}</span><span class="nm"><b>${label}</b><span>${sub}&nbsp;</span></span></div>`;
   };
   const w0 = (pl(S.seats[0]) || {}).wins || 0, w1 = (pl(S.seats[1]) || {}).wins || 0;
 
-  let status = "", cls = "";
-  if (S.phase === "play") {
-    if (myTurn) { status = "Your turn"; cls = "me"; }
-    else if (S.seats[S.turn] === "cpu") status = "Computer is thinking…";
+  let status = "", cls = "", sub = "";
+  if (S.phase === "play" || shaking) {
+    const bsPlace = S.game === "bs" && S.board.stage === "place";
+    if (shaking) status = "3… 2… 1…";
+    else if (myTurn) {
+      cls = "me";
+      status = bsPlace ? "Place your fleet" : S.game === "rps" ? "Pick your move" : "Your turn";
+      if (S.game === "dots" && S.lastBy === me && S.fx === "box") sub = "Box! Go again";
+      if (S.game === "bs" && S.last && S.last.seat !== me) sub = S.last.sunk ? "They sank your ship!" : S.last.hit ? "They hit you!" : "They missed";
+    } else if (S.turn < 0) {
+      const wait = [0, 1].filter(s => g.waiting(S, s) && s !== me).map(s => S.seats[s] === "cpu" ? "the computer" : esc(nameOf(S.seats[s])));
+      status = wait.length ? `Waiting for ${wait.join(" and ")}…` : "…";
+      if (bsPlace && me >= 0) sub = "They're placing their ships";
+    } else if (S.seats[S.turn] === "cpu") status = "Computer is thinking…";
     else status = `${esc(nameOf(S.seats[S.turn]))}'s turn`;
-    if (me < 0) status += `<span class="sub">You're watching${S.queue.indexOf(ME.id) === 0 ? ". You're next up!" : ""}</span>`;
+    if (!myTurn && S.game === "bs" && S.last && S.last.seat === me) sub = S.last.sunk ? "You sank a ship! 🚢" : S.last.hit ? "Hit! 💥" : "Miss";
+    if (S.game === "dots" && !myTurn && S.lastBy >= 0 && S.lastBy !== me && S.fx === "box" && me >= 0) sub = "They got a box and go again";
+    if (pending && MODE === "guest" && !g.local) sub = "Sending…";
+    if (me < 0) sub = `You're watching${S.queue.indexOf(ME.id) === 0 ? ". You're next up!" : ""}`;
   } else if (over) {
     if (S.result.w === "draw") status = "It's a draw! 🤝";
     else if (S.seats[S.result.w] === ME.id) { status = "You win! 🎉"; cls = "me"; }
     else status = `${esc(nameOf(S.seats[S.result.w]))} wins!`;
+    if (S.game === "dots") sub = `Boxes ${S.board.score[0]} – ${S.board.score[1]}`;
+    if (S.game === "rps") sub = `${S.board.score[0]} – ${S.board.score[1]}`;
+    if (S.game === "bs") sub = "Every ship sunk";
   }
 
-  let board = "";
-  if (S.game === "ttt") {
-    board = `<div class="ttt">${S.board.map((v, i) => {
-      const can = myTurn && v == null;
-      const inner = v == null ? "" : (v === 0 ? svgX(animate && i === S.last ? "draw" : "") : svgO(animate && i === S.last ? "draw" : ""));
-      return `<button class="${v != null ? "p" + v : ""} ${can ? "can" : ""} ${winLine.includes(i) ? "win" : ""}" ${can ? `data-mv="${i}"` : ""} aria-label="Square ${i + 1}">${inner}</button>`;
-    }).join("")}</div>`;
-  } else {
-    const W = g.cols, H = g.rows; let cells = "";
-    for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) {
-      const i = r * W + c, v = S.board[i];
-      const can = myTurn && S.board[c] == null;
-      cells += `<button ${can ? `data-mv="${c}"` : ""} aria-label="Column ${c + 1}">${v != null ? `<i class="pc p${v} ${animate && i === S.last ? "drop" : ""} ${winLine.includes(i) ? "win" : ""}" style="--f:${r + 1}"></i>` : ""}</button>`;
-    }
-    const arrows = myTurn ? Array.from({ length: W }, (_, c) => `<i>${S.board[c] == null ? "▼" : ""}</i>`).join("") : "";
-    board = `<div class="c4wrap"><div class="c4arrows p${S.turn}">${arrows}</div><div class="c4 ${myTurn ? "can" : ""}">${cells}</div></div>`;
-  }
+  const board = { ttt: boardTTT, c4: boardC4, dots: boardDots, bs: boardBS, rps: boardRPS }[S.game](c);
 
   let after = "";
   if (over) {
-    const inGame = me >= 0, host = MODE === "host" || MODE === "cpu";
+    const host = MODE === "host" || MODE === "cpu";
     let nextNote = "";
     if (S.queue.length) {
       const off = S.result.w === "draw" ? S.starter : 1 - S.result.w;
       nextNote = `<p class="center small mut" style="margin:0 0 12px">Next: ${esc(nameOf(S.seats[1 - off]))} vs ${esc(nameOf(S.queue[0]))}</p>`;
     }
     after = `<div class="after">${nextNote}
-      ${inGame || host ? `<button class="btn green" data-act="again">🔁 Play again</button>` : `<p class="center mut">Waiting for the next game…</p>`}
+      ${me >= 0 || host ? `<button class="btn green" data-act="again">🔁 Play again</button>` : `<p class="center mut">Waiting for the next game…</p>`}
       ${host ? `<div class="card"><p class="label">Switch game</p>${gamePicker(S.game, "data-setgame")}${MODE === "cpu" ? `<div class="gap"></div><p class="label">Computer level</p>${levelSeg(S.level, "data-setlevel")}` : ""}</div>` : ""}
     </div>`;
   }
@@ -555,7 +764,7 @@ function renderGame() {
   ${MODE === "host" && showQR ? inviteBlock() : ""}
   <div class="bar">${chip(0, "")}<div class="score"><span><b>${w0}</b> – <b>${w1}</b></span></div>${chip(1, "r")}</div>
   ${draws}
-  <div class="status ${cls}">${status}</div>
+  <div class="status ${cls}">${status}${sub ? `<span class="sub">${sub}</span>` : ""}</div>
   ${board}
   ${after}
   ${queue}
@@ -564,10 +773,12 @@ function renderGame() {
 
 // ===== TAPS =====
 app.addEventListener("click", e => {
-  const el = e.target.closest("[data-act],[data-mv],[data-pickgame],[data-setgame],[data-level],[data-setlevel],[data-kick]");
+  const el = e.target.closest("[data-act],[data-mv],[data-fire],[data-rps],[data-pickgame],[data-setgame],[data-level],[data-setlevel],[data-kick]");
   if (!el) return;
   const d = el.dataset;
   if (d.mv != null) return myMove(Number(d.mv));
+  if (d.fire != null) return myMove({ fire: Number(d.fire) });
+  if (d.rps) return myMove(d.rps);
   if (d.pickgame) { PREF.game = d.pickgame; savePref(); return renderHome(); }
   if (d.level) { PREF.level = d.level; savePref(); return renderHome(); }
   if (d.setgame) {
@@ -584,7 +795,7 @@ app.addEventListener("click", e => {
   switch (d.act) {
     case "host": return startHosting();
     case "cpu": return startCPU();
-    case "resume": { const s = ls.get("h2h_host", null); if (s && s.S) startHosting(s.S); return; }
+    case "resume": { const s = ls.get("h2h_host", null); if (s && s.S && GAMES[s.S.game]) startHosting(s.S); return; }
     case "joincode": {
       const c = ($("#jc").value || "").toUpperCase().replace(/[^A-Z]/g, "");
       if (c.length !== 4) { toast("Codes are 4 letters"); return; }
@@ -598,6 +809,8 @@ app.addEventListener("click", e => {
     case "share": return shareInvite();
     case "qr": showQR = !showQR; return render();
     case "sound": PREF.sound = !PREF.sound; savePref(); Snd.init(); return render();
+    case "shuffle": DRAFT = { k: secKey(), ships: GAMES.bs.randomFleet() }; Snd.pick(); return render();
+    case "ready": return myMove({ ships: draftFleet() });
   }
 });
 app.addEventListener("keydown", e => {
@@ -616,7 +829,7 @@ app.addEventListener("input", e => {
   if (j.length === 4) {
     joinCode = j;
     const saved = ls.get("h2h_host", null);
-    if (saved && saved.S && saved.S.room === j && Date.now() - saved.t < 3 * 3600e3) { startHosting(saved.S); return; } // the host scanned their own code
+    if (saved && saved.S && saved.S.room === j && GAMES[saved.S.game] && Date.now() - saved.t < 3 * 3600e3) { startHosting(saved.S); return; } // the host scanned their own code
     MODE = ME.name ? "guest" : "join";
     if (MODE === "guest") return startJoining(j);
   }
