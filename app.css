@@ -317,3 +317,4 @@ button.ttrow:active { transform: translateY(2px); box-shadow: inset 0 0 0 3px va
 .ttcard.mini .ttpic.isflag { padding: 8px 0; }
 .ttpic.isart { padding: 0; overflow: hidden; line-height: 0; background: #dfe8f7; }
 .ttpic.isart img { width: 100%; aspect-ratio: 5/4; object-fit: cover; object-position: 50% 22%; display: block; }
+.ttico i { background-size: cover; background-position: center 30%; }

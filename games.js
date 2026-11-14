@@ -324,7 +324,7 @@
     },
     christmas: {
       id: "christmas", name: "Christmas", icon: "🎄",
-      note: "Stats are just for fun. Argue about them over the mince pies!",
+      note: "Stats are just for fun. Argue about them over the mince pies!", img: art("christmas"),
       stats: [{ l: "Festive cheer", u: "/100" }, { l: "Sparkle", u: "/100" }, { l: "Speed", u: "/100" }, { l: "Cuddliness", u: "/100" }, { l: "Magic", u: "/100" }],
       cards: [
         ["Father Christmas", "🎅", 100, 80, 95, 85, 100], ["Mrs Claus", "🤶", 95, 75, 30, 95, 90], ["Head elf", "🧝", 90, 70, 60, 70, 80],

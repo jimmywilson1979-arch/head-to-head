@@ -10,7 +10,7 @@ Phone vs phone games. One phone starts a game and shows a QR code, everyone else
 - **Dots & Boxes** – 4×4 boxes. Finish a box and you go again.
 - **Battleships** – 8×8, ships of 4, 3, 3, 2, 2. Shuffle your fleet until you're happy, press Ready, then take turns firing. Your ships stay on your phone; the other player never sees them.
 - **Rock Paper Scissors** – both pick at the same time, first to 3. Picks are hidden until both are in.
-- **Card Clash** (Top Trumps style) – the deck is split between you. Whoever's turn it is picks a stat on their top card; higher wins both cards. A draw puts both cards in the middle for the next winner. Win every card, or have the most after 30 rounds. Themes: **Animals** (32 cards), **Dinosaurs** (24), **Space** (24), **Countries** (30, including Wales, England and Scotland), **Sea life** (24) and **Christmas** (26, just for fun). More themes plug into `DECKS` in `games.js`.
+- **Card Clash** (Top Trumps style) – the deck is split between you. Whoever's turn it is picks a stat on their top card; higher wins both cards. A draw puts both cards in the middle for the next winner. Win every card, or have the most after 30 rounds. Themes: **Animals** (32 cards), **Dinosaurs** (24), **Space** (24), **Countries** (30, including Wales, England and Scotland), **Sea life** (24) and **Christmas** (26, just for fun). Every card has its own storybook picture (made in Gemini, in `img/cards/`), and Countries uses real flags. More themes plug into `DECKS` in `games.js`.
 
 ## How to play a friend
 1. Open the link, type your name, pick a game and press **Play a friend**.

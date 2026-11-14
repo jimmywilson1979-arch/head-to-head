@@ -515,7 +515,7 @@ const GAME_ICON = {
   hockey: `<svg viewBox="0 0 120 104"><rect x="22" y="4" width="76" height="96" rx="16" fill="#123a8a" stroke="#c7d2fe" stroke-width="4"/><line x1="24" y1="52" x2="96" y2="52" stroke="#ff5d73" stroke-width="2.5" stroke-dasharray="5 4"/><rect x="46" y="2" width="28" height="5" fill="#050914"/><rect x="46" y="97" width="28" height="5" fill="#050914"/><circle cx="60" cy="24" r="9" fill="#ffd23f"/><circle cx="52" cy="80" r="9" fill="#ff5d73"/><circle cx="70" cy="58" r="5" fill="#f1f5ff"/></svg>`,
   golf: `<svg viewBox="0 0 120 104"><rect x="6" y="6" width="108" height="92" rx="14" fill="#46ad5f" stroke="#a46a3c" stroke-width="6"/><circle cx="84" cy="34" r="8" fill="#0d1a10"/><line x1="84" y1="34" x2="84" y2="8" stroke="#eee" stroke-width="2.5"/><path d="M84 8 L100 13 L84 18Z" fill="#ff5d73"/><circle cx="36" cy="76" r="7" fill="#fff" stroke="#ff5d73" stroke-width="2"/><path d="M40 70 Q60 50 78 40" stroke="#fff" stroke-width="2" stroke-dasharray="3 4" fill="none"/></svg>`,
   wi: `<div class="wiico">${[3, 14, 18].map(i => `<i>${faceSVG(i)}</i>`).join("")}</div>`,
-  tt: `<div class="ttico"><i>🦁</i><i>🐘</i></div>`,
+  tt: `<div class="ttico"><i style="background-image:url(img/cards/nature/lion.webp)"></i><i style="background-image:url(img/cards/dinosaurs/tyrannosaurus-rex.webp)"></i></div>`,
 };
 
 function joinURL(room) { return location.origin + location.pathname + "?join=" + room + (LOCAL ? "&local" : ""); }
