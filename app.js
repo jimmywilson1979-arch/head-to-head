@@ -36,14 +36,16 @@ let MODE = "home";          // home | join | host | guest | cpu | ended
 let S = null;               // the game (host & cpu: the real one; guest: the host's copy, minus secrets)
 let T = null;               // live connection
 let conn = "off";           // off | connecting | ok | lost
+let lastHeard = 0, lastRevive = 0; // host: when a guest last spoke; both: last forced reconnect
 let lastSeen = 0, joinedAt = 0, pending = null, cpuTimer = null, animKey = "", showQR = false, leaveArm = 0, endedMsg = "";
 let qrCache = { url: null, img: null };
+let SUGGEST = false, gamesArm = 0;   // guest's "suggest a game" panel; host's tap-twice to leave a game
 let DRAFT = { k: "", ships: null };   // Battleships: fleet being placed
 let MYPICK = { k: "", v: null };      // Rock Paper Scissors: what a guest picked
 let REVEAL = { k: "", until: 0 };     // Rock Paper Scissors: hands shaking
 let TTSEEN = "";                      // Card Clash: last round result this phone has dismissed
 let WI = { k: "", pick: null, guessing: false, qOpen: false }; // Who Is It?: my draft pick, guess mode
-let GOLF = { anim: null, seen: "", aim: null, banner: null };   // Mini Golf: ball animation, my aim while dragging
+let GOLF = { anim: null, seen: "", aim: null, card: null, msg: null };   // Mini Golf: ball animation, my aim while dragging
 let HKR = null;                                                  // Air Hockey: the live table on this phone
 const FAST = { pcs: {}, dcs: {} };                               // direct phone-to-phone links (WebRTC)
 
@@ -131,12 +133,14 @@ function connect(room, onMsg, onStatus) {
   sub();
   return {
     send: m => { if (ch) ch.send({ type: "broadcast", event: "m", payload: m }).catch(() => { }); },
-    revive() { if (closed) return; const old = ch; ch = null; try { sb.removeChannel(old); } catch (e) { } sub(); },
+    // hard = also restart the socket: after a phone sleeps the old one can look alive but be dead
+    revive(hard) { if (closed) return; const old = ch; ch = null; try { sb.removeChannel(old); } catch (e) { } if (hard) { try { sb.realtime.disconnect(); } catch (e) { } } setTimeout(() => { if (!closed) sub(); }, hard ? 150 : 0); },
     close() { closed = true; try { sb.removeChannel(ch); } catch (e) { } ch = null; },
   };
 }
 function setConn(s) {
   const was = conn; conn = s;
+  if (s === "ok") { lastHeard = Date.now(); if (MODE === "guest") lastSeen = Math.max(lastSeen, Date.now() - 5000); }
   if (s === "ok") {
     if (MODE === "guest") sendHello();
     if (MODE === "host" && S) sendState();
@@ -209,7 +213,7 @@ function maybeCPU() {
   if (MODE !== "cpu" || !S || S.phase !== "play" || cpuTimer) return;
   const cs = S.seats.indexOf("cpu");
   if (cs < 0 || !G().waiting(S, cs) || ttRevealPending() || GOLF.anim) return;
-  if (GOLF.banner && Date.now() < GOLF.banner.until) { setTimeout(maybeCPU, GOLF.banner.until - Date.now() + 60); return; }
+  if (S.game === "golf" && GOLF.card && Date.now() < GOLF.card.until) { setTimeout(maybeCPU, Math.min(1500, GOLF.card.until - Date.now() + 60)); return; }
   const placing = S.game === "bs" && S.board.stage === "place";
   const extra = S.game === "rps" && REVEAL.until > Date.now() ? REVEAL.until - Date.now() : 0;
   cpuTimer = setTimeout(() => {
@@ -288,6 +292,7 @@ function startHosting(existing) {
 }
 function hostMsg(m) {
   if (!m || !S) return;
+  lastHeard = Date.now();
   if (m.t === "hp") return hkPadIn(m);
   if (m.t === "rtc") return rtcOnMsg(m);
   if (m.t === "hello") {
@@ -307,6 +312,11 @@ function hostMsg(m) {
     if (ok) afterMove();
     commit();
     return;
+  }
+  if (m.t === "suggest") {
+    const p = pl(m.pid); if (!p || !GAMES[m.game]) return;
+    S.suggest = { pid: m.pid, game: m.game }; Snd.join(); toast(`${p.name} wants to play ${GAMES[m.game].name}`);
+    return commit();
   }
   if (m.t === "again") { if (S.phase === "over" && S.seats.includes(m.pid)) { nextRound(); commit(); } return; }
   if (m.t === "bye") { const p = pl(m.pid); if (p) { toast(p.name + " left"); removePlayer(m.pid); commit(); } }
@@ -385,6 +395,28 @@ function myMove(mv) {
   }
   if (applyMove(ME.id, mv, n)) { afterMove(); commit(); }
 }
+function toLobby() { // everyone stays connected and goes back to choosing a game
+  if (MODE !== "host" || !S) return;
+  S.phase = "lobby"; S.seats = [null, null]; S.queue = []; S.result = null; S.suggest = null;
+  commit();
+}
+function takeSuggestion() {
+  if (MODE !== "host" || !S || !S.suggest) return;
+  PREF.game = S.game = S.suggest.game; savePref(); S.suggest = null;
+  if (S.phase === "lobby") { if (S.players.length >= 2) startFromLobby(); }
+  else if (S.phase === "over") nextRound();
+  else startRound();
+  commit();
+}
+function suggestBanner() {
+  if (MODE !== "host" || !S || !S.suggest || !GAMES[S.suggest.game]) return "";
+  return `<div class="suggest"><span>💡 <b>${esc(nameOf(S.suggest.pid))}</b> wants to play <b>${esc(GAMES[S.suggest.game].name)}</b></span><button class="btn green" data-act="takesuggest">Play it</button><button class="x" data-act="nosuggest" aria-label="No thanks">×</button></div>`;
+}
+function suggestPanel() {
+  if (!SUGGEST || MODE !== "guest" || !S) return "";
+  return `<div class="overlay"><div class="card"><p class="label">Suggest a game to ${esc(nameOf(S.host))}</p>${gamePicker(S.game, "data-suggest")}<div class="gap"></div><button class="btn alt" data-act="closesuggest">Cancel</button></div></div>`;
+}
+const gamesBtn = () => MODE === "cpu" ? `<button class="iconbtn" data-act="cpugames">🎮 Games</button>` : `<button class="iconbtn" data-act="games">🎮 Games</button>`;
 function playAgain() {
   if (!S || S.phase !== "over") return;
   if (MODE === "guest") { T.send({ t: "again", pid: ME.id }); toast("Asking for a rematch…"); return; }
@@ -422,22 +454,29 @@ function draftFleet() {
 
 // ===== TIMERS =====
 setInterval(() => { if (MODE === "host") sendState(); }, 4000);
+function heal(force) { // reconnect from scratch, at most every 8 seconds unless asked
+  if (!T || (!force && Date.now() - lastRevive < 8000)) return;
+  lastRevive = Date.now(); conn = "connecting"; T.revive(true); render();
+}
 setInterval(() => {
+  const now = Date.now();
   if (MODE === "guest" && T) {
-    if (conn === "ok" && Date.now() - lastSeen > 6000) sendHello();
+    if (conn === "ok" && now - lastSeen > 4000) sendHello();
+    if (S && now - lastSeen > 9000 && now - joinedAt > 9000) heal(); // heard nothing from the host: the link has probably died
+  }
+  if (MODE === "host" && T && S && S.players.length > 1 && lastHeard && now - lastHeard > 12000 && now - lastRevive > 45000) heal(); // guests ping every few seconds
+  if (MODE === "guest" && T) {
     if (pending && Date.now() - pending.first > 12000) { pending = null; render(); }
     else if (pending && Date.now() - pending.t > 2500 && conn === "ok") { pending.t = Date.now(); T.send({ t: "move", pid: ME.id, mv: pending.mv, n: pending.n, mid: pending.mid }); }
     if (!S || Date.now() - lastSeen > 9000) render();
   }
-  if ((MODE === "host" || MODE === "guest") && T && conn === "lost") T.revive();
+  if ((MODE === "host" || MODE === "guest") && T && conn === "lost") heal();
 }, 1500);
+setInterval(() => { if (MODE === "guest" && T && conn === "ok") sendHello(); }, 4000); // "still here" ping for the host
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState !== "visible") return;
   keepAwake();
-  if ((MODE === "host" || MODE === "guest") && T) {
-    if (conn !== "ok") T.revive();
-    if (MODE === "guest") sendHello(); else sendState();
-  }
+  if ((MODE === "host" || MODE === "guest") && T) { heal(true); lastHeard = Date.now(); }
 });
 
 // ===== DRAWING =====
@@ -592,9 +631,11 @@ function playerList(editable) {
   }).join("")}</ul>`;
 }
 function connBanner() {
-  if (MODE === "cpu" || conn === "ok") return "";
-  if (MODE === "guest" && S && Date.now() - lastSeen > 9000) return `<div class="conn">Waiting for ${esc(nameOf(S.host))}'s phone… ask them to keep the game open.</div>`;
-  return `<div class="conn">${conn === "connecting" ? "Connecting…" : "Connection lost. Reconnecting…"}</div>`;
+  if (MODE === "cpu") return "";
+  const btn = `<button class="connbtn" data-act="reconnect">Tap to reconnect</button>`;
+  if (MODE === "guest" && S && Date.now() - lastSeen > 9000) return `<div class="conn">Can't hear ${esc(nameOf(S.host))}'s phone. Keep the game open on it. ${btn}</div>`;
+  if (conn === "ok") return "";
+  return `<div class="conn">${conn === "connecting" ? "Connecting…" : "Connection lost. Reconnecting…"} ${btn}</div>`;
 }
 function inviteBlock() {
   return `<div class="card center">
@@ -612,7 +653,9 @@ function renderLobby() {
   app.innerHTML = `
   <div class="top"><span class="t">${esc(G().name)}</span>${soundBtn()}</div>
   ${connBanner()}
-  ${host ? inviteBlock() : `<div class="card center" style="padding:24px 16px"><div style="font-size:42px" class="wait">✅</div><h2 style="margin:8px 0 4px">You're in!</h2><p class="mut">Waiting for ${esc(nameOf(S.host))} to start the game.</p></div>`}
+  ${suggestBanner()}
+  ${host ? inviteBlock() : `<div class="card center" style="padding:24px 16px"><div style="font-size:42px" class="wait">✅</div><h2 style="margin:8px 0 4px">You're in!</h2><p class="mut">Waiting for ${esc(nameOf(S.host))} to pick a game: <b style="color:var(--ink)">${esc(G().name)}</b> so far.</p></div>
+    <div class="card"><p class="label">Fancy something else? Suggest a game</p>${gamePicker(S.game, "data-suggest")}</div>`}
   <div class="card">
     <p class="label">Players (${n})</p>
     ${playerList(host)}
@@ -875,10 +918,23 @@ function golfStartAnim(s) {
   let k = 0;
   g.sim(L.hole, L.from[0], L.from[1], L.vx, L.vy, (x, y) => { if (k++ % 3 === 0) pts.push([x, y]); });
   pts.push(null); // end marker
-  GOLF.anim = { key, hole: L.hole, seat: L.seat, pts, i: 0, water: L.water, sunk: L.sunk, from: L.from, t0: performance.now() };
+  GOLF.anim = { key, hole: L.hole, seat: L.seat, pts, i: 0, water: L.water, sunk: L.sunk, from: L.from, t0: performance.now(), holeDone: s.board.hole !== L.hole || s.phase === "over" };
+  GOLF.card = null; GOLF.msg = null;
   Snd.tone(300, .05, "triangle", .14); Snd.noise(.05, .12, 0, 2500);
-  if (s.board.hole !== L.hole) GOLF.banner = { hole: L.hole, until: 0 };
   golfLoop();
+}
+const golfWho = seat => S.seats[seat] === ME.id ? "You" : nameOf(S.seats[seat]);
+function golfAfterShot(a) { // say what just happened, and sum up the hole when it's finished
+  const b = S.board, done = a.holeDone;
+  const n = done ? b.scores[a.seat][a.hole] : b.balls[a.seat].strokes;
+  const gaveUp = !a.sunk && (done ? n > GAMES.golf.MAX_STROKES : b.balls[a.seat].gaveUp);
+  const who = golfWho(a.seat);
+  let msg = null;
+  if (a.sunk) msg = { cls: "good", t: n === 1 ? `🎉 HOLE IN ONE! ${who === "You" ? "You" : who} did it!` : `⛳ ${who} ${who === "You" ? "are" : "is"} in! ${n} shots` };
+  else if (a.water) msg = { cls: "bad", t: `💦 Splash! ${who} ${who === "You" ? "go" : "goes"} back, +1 shot` };
+  else if (gaveUp) msg = { cls: "bad", t: `${who} used all ${GAMES.golf.MAX_STROKES} shots. Ball picked up (scores ${n})` };
+  if (msg) { GOLF.msg = Object.assign(msg, { until: Date.now() + 2800 }); setTimeout(() => { if (S && S.game === "golf" && !GOLF.anim) render(); }, 2900); }
+  if (done && S.phase === "play") GOLF.card = { hole: a.hole, until: Date.now() + 9000 };
 }
 function golfAnimLeft() { const a = GOLF.anim; return a ? Math.max(0, (a.pts.length - a.i) * 16) : 0; }
 let golfRaf = 0, golfTimer = 0;
@@ -894,10 +950,9 @@ function golfLoop() {
       clearInterval(golfTimer);
       GOLF.anim = null;
       if (a.sunk) { Snd.tone(523, .1, "triangle", .14); Snd.tone(784, .16, "triangle", .14, .1); Snd.tone(1047, .2, "triangle", .12, .2); buzz(40); }
-      else if (a.water) { Snd.miss(); toast("Splash! Back where you were, plus a penalty stroke"); }
-      if (GOLF.banner) GOLF.banner.until = Date.now() + 2600;
-      render(); if (GOLF.banner) setTimeout(() => { if (S && S.game === "golf") render(); }, 2700);
-      maybeCPU();
+      else if (a.water) Snd.miss();
+      golfAfterShot(a);
+      render(); maybeCPU();
       return;
     }
     drawGolf();
@@ -945,11 +1000,21 @@ function drawGolf() {
     c.strokeStyle = seat ? "#ffd23f" : "#ff5d73"; c.lineWidth = 2.2; c.stroke(); c.globalAlpha = 1;
   };
   [0, 1].forEach(seat => {
-    let x, y, show;
+    let x, y, show, holed = false;
     if (a && a.seat === seat) { const p = a.pts[a.i] || a.pts[a.i - 1] || a.from; x = p[0]; y = p[1]; show = true; }
-    else if (a && a.hole !== b.hole) { show = false; }
-    else { const bl = b.balls[seat]; x = bl.x; y = bl.y; show = !bl.in; }
-    if (show) ballAt(x, y, seat, seat !== me && me >= 0);
+    else if (a && a.hole !== b.hole) { show = true; holed = true; } // finished hole: their ball is already in the cup
+    else { const bl = b.balls[seat]; x = bl.x; y = bl.y; show = !bl.in; holed = bl.in && !bl.gaveUp; }
+    if (holed) { // sitting in the cup
+      c.fillStyle = "#fff"; c.beginPath(); c.arc(H.cup[0] + (seat ? 3 : -3), H.cup[1] + 1, 3.6, 0, Math.PI * 2); c.fill();
+      c.strokeStyle = seat ? "#ffd23f" : "#ff5d73"; c.lineWidth = 1.6; c.stroke(); return;
+    }
+    if (!show) return;
+    if (seat === me && !a) { // your ball: ring + label so it's easy to spot
+      c.strokeStyle = me ? "rgba(255,210,63,.9)" : "rgba(255,93,115,.9)"; c.lineWidth = 1.4; c.setLineDash([2.5, 2.5]);
+      c.beginPath(); c.arc(x, y, 11, 0, Math.PI * 2); c.stroke(); c.setLineDash([]);
+      c.fillStyle = "#fff"; c.font = "700 8px Nunito, sans-serif"; c.textAlign = "center"; c.fillText("YOU", x, y - 14);
+    }
+    ballAt(x, y, seat, seat !== me && me >= 0);
   });
   // aim
   const A = GOLF.aim;
@@ -993,10 +1058,18 @@ function boardGolf(c) {
   const card = `<table class="golfcard"><tr><th></th>${g.HOLES.map((_, i) => `<th class="${i === b.hole ? "cur" : ""}">${i + 1}</th>`).join("")}<th>Tot</th></tr>
     <tr class="par"><td>Par</td>${g.HOLES.map(h => `<td>${h.par}</td>`).join("")}<td>${g.HOLES.reduce((x, h) => x + h.par, 0)}</td></tr>
     ${[0, 1].map(sd => `<tr class="p${sd}"><td><i></i>${nm(sd)}</td>${g.HOLES.map((_, i) => cell(sd, i)).join("")}<td><b>${tot(sd)}</b></td></tr>`).join("")}</table>`;
-  const bn = GOLF.banner && (GOLF.anim || Date.now() < GOLF.banner.until) && !a ? GOLF.banner : null;
-  const banner = bn ? `<div class="golfbanner"><b>Hole ${bn.hole + 1} done</b><span>${[0, 1].map(sd => `${nm(sd)} ${b.scores[sd][bn.hole] ?? "-"}`).join(" · ")}</span></div>` : "";
+  const now = Date.now();
+  const msg = !a && GOLF.msg && now < GOLF.msg.until ? `<div class="golfmsg ${GOLF.msg.cls}">${esc(GOLF.msg.t)}</div>` : "";
+  let banner = "";
+  const cd = !a && GOLF.card && now < GOLF.card.until ? GOLF.card : null;
+  if (cd) {
+    const h = cd.hole, par = g.HOLES[h].par, word = d => d <= -3 ? "Albatross!" : d === -2 ? "Eagle!" : d === -1 ? "Birdie!" : d === 0 ? "Par" : d === 1 ? "Bogey" : `+${d}`;
+    const sc = [0, 1].map(sd => b.scores[sd][h]);
+    const won = sc[0] === sc[1] ? "Hole halved 🤝" : `🏆 ${golfWho(sc[0] < sc[1] ? 0 : 1)} won the hole`;
+    banner = `<div class="golfbanner"><b>Hole ${h + 1} done</b>${[0, 1].map(sd => `<div class="gbrow p${sd}"><i></i><span>${nm(sd)}</span><em>${sc[sd]} shot${sc[sd] === 1 ? "" : "s"}</em><small>${sc[sd] === 1 ? "Hole in one!" : word(sc[sd] - par)}</small></div>`).join("")}<p>${won}</p><button class="btn green" data-act="golfnext">Next hole ▶</button></div>`;
+  }
   return `<div class="golfhead"><b>Hole ${holeIx + 1} of ${g.HOLES.length}: ${esc(H.name)}</b><span>Par ${H.par}</span></div>
-    <div class="golfwrap">${banner}<canvas id="golfcv"></canvas></div>
+    <div class="golfwrap">${banner}${msg}<canvas id="golfcv"></canvas></div>
     ${c.myTurn && !a ? `<p class="center small mut" style="margin:8px 0 0">Drag back from anywhere, like a catapult, then let go</p>` : ""}${card}`;
 }
 // ----- air hockey -----
@@ -1191,14 +1264,14 @@ function hkBar() {
   const link = MODE === "cpu" ? "" : (MODE === "host" ? dcOpen(opp) : dcOpen(S.host)) ? `<span class="hklink ok">⚡ Direct</span>` : `<span class="hklink">☁️ Online</span>`;
   const order = me === 1 ? [1, 0] : [0, 1];
   el.innerHTML = `<div class="hkscore">${order.map((sd, i) => `<span class="p${sd}"><i></i>${nm(sd)} <b>${b.score[sd]}</b></span>${i === 0 ? `<em>first to ${b.target}</em>` : ""}`).join("")}</div>
-    <div class="hkbtns">${link}${me >= 0 && MODE !== "cpu" ? `<button class="iconbtn" data-act="hkview">${hkSplit() ? "🖥️ Whole table" : "📱📱 Phones end to end"}</button>` : ""}${soundBtn()}<button class="iconbtn" data-act="leave">Leave</button></div>
+    <div class="hkbtns">${link}${gamesBtn()}${me >= 0 && MODE !== "cpu" ? `<button class="iconbtn" data-act="hkview">${hkSplit() ? "🖥️ Whole table" : "📱📱 Phones end to end"}</button>` : ""}${soundBtn()}<button class="iconbtn" data-act="leave">Leave</button></div>
     ${hkSplit() ? `<div class="hkhint">Put the phones top to top. The puck slides across!</div>` : ""}`;
 }
 function renderHockey() {
-  const key = hkKey() + ":" + (hkSplit() ? "s" : "f");
+  const key = hkKey() + ":" + (hkSplit() ? "s" : "f") + (SUGGEST ? "+s" : "") + (S.suggest ? "+b" : "") + conn;
   if (app.dataset.hk === key && document.getElementById("hkcv")) { hkBar(); return; }
   app.dataset.hk = key;
-  app.innerHTML = `<div class="hk ${hkSplit() ? "split" : ""}">${connBanner()}<div class="hkstage"><canvas id="hkcv"></canvas></div><div id="hkbar" class="hkbar"></div></div>`;
+  app.innerHTML = `<div class="hk ${hkSplit() ? "split" : ""}">${connBanner()}${suggestBanner()}${suggestPanel()}<div class="hkstage"><canvas id="hkcv"></canvas></div><div id="hkbar" class="hkbar"></div></div>`;
   hkPointer(document.getElementById("hkcv")); hkBar();
 }
 function deckPicker(sel, attr) {
@@ -1221,6 +1294,7 @@ function renderGame() {
     if (S.phase === "play") sub = w ? (simul ? "choosing…" : id === "cpu" ? "thinking…" : "to play") : simul ? "ready ✓" : "";
     else if (over && S.result.w === seat) sub = "wins!";
     if (S.game === "dots" && !(over && S.result.w === seat)) sub = `${S.board.score[seat]} box${S.board.score[seat] === 1 ? "" : "es"}`;
+    if (S.game === "golf" && S.phase === "play") { const bl = S.board.balls[seat]; sub = bl.in ? (bl.gaveUp ? "picked up" : `in ✓ ${bl.strokes}`) : `${bl.strokes} shot${bl.strokes === 1 ? "" : "s"}`; }
     if (S.game === "tt" && !(over && S.result.w === seat)) sub = `${S.board.count[seat]} card${S.board.count[seat] === 1 ? "" : "s"}`;
     return `<div class="chip p${seat} ${side} ${w && !simul ? "turn" : ""}"><span class="mk">${markFor(S.game, seat)}</span><span class="nm"><b>${label}</b><span>${sub}&nbsp;</span></span></div>`;
   };
@@ -1242,6 +1316,7 @@ function renderGame() {
       const wiPick = S.game === "wi" && S.board.stage === "pick";
       status = bsPlace ? "Place your fleet" : wiPick ? "Choose your mystery person" : S.game === "rps" ? "Pick your move" : S.game === "tt" ? "Pick a stat" : S.game === "wi" ? "Your turn: ask a question" : S.game === "golf" ? "Your shot" : "Your turn";
       if (S.game === "dots" && S.lastBy === me && S.fx === "box") sub = "Box! Go again";
+      if (S.game === "golf" && S.board.balls[1 - me].in && !S.board.balls[1 - me].gaveUp) sub = `${esc(nameOf(S.seats[1 - me]))} is in with ${S.board.balls[1 - me].strokes}. Your shot`;
       if (S.game === "bs" && S.last && S.last.seat !== me) sub = S.last.sunk ? "They sank your ship!" : S.last.hit ? "They hit you!" : "They missed";
     } else if (S.turn < 0) {
       const wait = [0, 1].filter(s => g.waiting(S, s) && s !== me).map(s => S.seats[s] === "cpu" ? "the computer" : esc(nameOf(S.seats[s])));
@@ -1249,6 +1324,7 @@ function renderGame() {
       if (bsPlace && me >= 0) sub = "They're placing their ships";
     } else if (S.seats[S.turn] === "cpu") status = "Computer is thinking…";
     else if (S.game === "golf" && GOLF.anim) status = GOLF.anim.seat === mySeat() ? "Rolling…" : `${esc(nameOf(S.seats[GOLF.anim.seat]))} is putting…`;
+    else if (S.game === "golf" && me >= 0 && S.board.balls[me].in) { status = "You're in! ⛳"; cls = "me"; sub = `${esc(nameOf(S.seats[1 - me]))} is still playing this hole`; }
     else status = S.game === "tt" ? `${esc(nameOf(S.seats[S.turn]))} is choosing…` : `${esc(nameOf(S.seats[S.turn]))}'s turn`;
     if (!myTurn && S.game === "bs" && S.last && S.last.seat === me) sub = S.last.sunk ? "You sank a ship! 🚢" : S.last.hit ? "Hit! 💥" : "Miss";
     if (S.game === "dots" && !myTurn && S.lastBy >= 0 && S.lastBy !== me && S.fx === "box" && me >= 0) sub = "They got a box and go again";
@@ -1280,7 +1356,9 @@ function renderGame() {
     }
     after = `<div class="after">${nextNote}
       ${me >= 0 || host ? `<button class="btn green" data-act="again">🔁 Play again</button>` : `<p class="center mut">Waiting for the next game…</p>`}
-      ${host ? `<div class="card"><p class="label">Switch game</p>${gamePicker(S.game, "data-setgame")}${S.game === "tt" ? `<div class="gap"></div><p class="label">Card Clash theme</p>${deckPicker(S.opts && S.opts.deck, "data-setdeck")}` : ""}${MODE === "cpu" ? `<div class="gap"></div><p class="label">Computer level</p>${levelSeg(S.level, "data-setlevel")}` : ""}</div>` : ""}
+      ${MODE === "host" ? `<button class="btn" data-act="tolobby">🎮 Choose another game</button>` : ""}
+      ${MODE === "guest" ? `<button class="btn" data-act="opensuggest">💡 Suggest another game</button>` : ""}
+      ${MODE === "cpu" ? `<div class="card"><p class="label">Switch game</p>${gamePicker(S.game, "data-setgame")}${S.game === "tt" ? `<div class="gap"></div><p class="label">Card Clash theme</p>${deckPicker(S.opts && S.opts.deck, "data-setdeck")}` : ""}${MODE === "cpu" ? `<div class="gap"></div><p class="label">Computer level</p>${levelSeg(S.level, "data-setlevel")}` : ""}</div>` : ""}
     </div>`;
   }
 
@@ -1288,8 +1366,8 @@ function renderGame() {
   const draws = S.draws ? `<div class="center small mut" style="margin-top:-4px;margin-bottom:8px">${S.draws} draw${S.draws > 1 ? "s" : ""}</div>` : "";
 
   app.innerHTML = `
-  <div class="top"><span class="t">${esc(g.name)}${MODE === "cpu" ? ` <span class="small mut">· ${LEVELS[S.level]}</span>` : ""}</span><span class="row" style="flex:none;gap:6px">${MODE === "host" ? `<button class="iconbtn" data-act="qr">${showQR ? "Hide QR" : "➕ Invite"}</button>` : ""}${soundBtn()}</span></div>
-  ${connBanner()}
+  <div class="top"><span class="t">${esc(g.name)}${MODE === "cpu" ? ` <span class="small mut">· ${LEVELS[S.level]}</span>` : ""}</span><span class="row" style="flex:none;gap:6px">${gamesBtn()}${MODE === "host" ? `<button class="iconbtn" data-act="qr">${showQR ? "Hide QR" : "➕ Invite"}</button>` : ""}${soundBtn()}</span></div>
+  ${connBanner()}${suggestBanner()}${suggestPanel()}
   ${MODE === "host" && showQR ? inviteBlock() : ""}
   <div class="bar">${chip(0, "")}<div class="score"><span><b>${w0}</b> – <b>${w1}</b></span></div>${chip(1, "r")}</div>
   ${draws}
@@ -1303,9 +1381,10 @@ function renderGame() {
 
 // ===== TAPS =====
 app.addEventListener("click", e => {
-  const el = e.target.closest("[data-act],[data-mv],[data-fire],[data-rps],[data-tt],[data-wiask],[data-wiguess],[data-deck],[data-setdeck],[data-pickgame],[data-setgame],[data-level],[data-setlevel],[data-kick]");
+  const el = e.target.closest("[data-suggest],[data-act],[data-mv],[data-fire],[data-rps],[data-tt],[data-wiask],[data-wiguess],[data-deck],[data-setdeck],[data-pickgame],[data-setgame],[data-level],[data-setlevel],[data-kick]");
   if (!el) return;
   const d = el.dataset;
+  if (d.suggest) { if (MODE === "guest" && T) { T.send({ t: "suggest", pid: ME.id, game: d.suggest }); SUGGEST = false; toast(`Suggested ${GAMES[d.suggest].name} to ${nameOf(S.host)}`); render(); } return; }
   if (d.mv != null) return myMove(Number(d.mv));
   if (d.fire != null) return myMove({ fire: Number(d.fire) });
   if (d.rps) return myMove(d.rps);
@@ -1344,6 +1423,18 @@ app.addEventListener("click", e => {
     case "share": return shareInvite();
     case "qr": showQR = !showQR; return render();
     case "sound": PREF.sound = !PREF.sound; savePref(); Snd.init(); return render();
+    case "tolobby": return toLobby();
+    case "golfnext": GOLF.card = null; render(); return maybeCPU();
+    case "takesuggest": return takeSuggestion();
+    case "nosuggest": if (MODE === "host" && S) { S.suggest = null; commit(); } return;
+    case "opensuggest": SUGGEST = true; return render();
+    case "closesuggest": SUGGEST = false; return render();
+    case "games":
+      if (MODE === "guest") { SUGGEST = true; return render(); }
+      if (S.phase !== "play" || Date.now() - gamesArm < 3000) { gamesArm = 0; return toLobby(); }
+      gamesArm = Date.now(); toast("Tap 🎮 Games again to stop this game and pick another"); return;
+    case "cpugames": MODE = "home"; S = null; clearTimeout(cpuTimer); cpuTimer = null; return render();
+    case "reconnect": heal(true); if (MODE === "guest") setTimeout(sendHello, 700); else setTimeout(sendState, 700); return;
     case "shuffle": DRAFT = { k: secKey(), ships: GAMES.bs.randomFleet() }; Snd.pick(); return render();
     case "ready": return myMove({ ships: draftFleet() });
     case "ttnext": TTSEEN = ttKey(); render(); return maybeCPU();

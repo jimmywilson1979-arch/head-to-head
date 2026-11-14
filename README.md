@@ -18,6 +18,13 @@ Phone vs phone games. One phone starts a game and shows a QR code, everyone else
 3. Press **Start the game**. Your phone and theirs show the same board; take turns.
 4. Press **Play again** for a rematch. Who goes first swaps each game, and the score is kept.
 
+## Changing games
+- **Host:** tap **🎮 Games** (tap twice if a game is going) or **Choose another game** at the end. Everyone goes back to the game menu together and stays connected – pick a new game and press Start.
+- **Everyone else:** tap **🎮 Games** or **Suggest another game** and pick one. The host gets a "Kelly wants to play…" banner with a **Play it** button.
+
+## If a phone goes to sleep
+Each phone checks the link every few seconds and reconnects by itself if it has gone quiet, and again straight away when you come back to the app. There's also a **Tap to reconnect** button on the warning bar.
+
 ## More than two players
 Up to 8 phones can join. Two play at a time and the rest wait in line.
 **Winner stays on:** the loser goes to the back of the line and the next person takes their place (on a draw, whoever went first steps off).
