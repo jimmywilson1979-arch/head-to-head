@@ -234,6 +234,45 @@
     return opts.find(o => BEATS[o] === guess);
   }
 
+
+  // ===== CARD CLASH (Top Trumps style) =====
+  // Each deck: stats (higher always wins) and cards [name, picture, ...values in stat order]. Facts are rough figures for a big adult.
+  const DECKS = {
+    animals: {
+      id: "animals", name: "Animals", icon: "🦁",
+      note: "Rough figures for a big adult. Size is the longest measurement (nose to tail, height or wingspan).",
+      stats: [{ l: "Top speed", u: "mph" }, { l: "Weight", u: "kg" }, { l: "Lifespan", u: "yrs" }, { l: "Size", u: "cm" }, { l: "Danger", u: "/10" }],
+      cards: [
+        ["Cheetah", "🐆", 70, 54, 12, 200, 5], ["Lion", "🦁", 50, 190, 15, 300, 9], ["Tiger", "🐅", 40, 220, 15, 310, 9],
+        ["African elephant", "🐘", 25, 6000, 70, 700, 8], ["Blue whale", "🐋", 20, 150000, 90, 2900, 2], ["Great white shark", "🦈", 35, 1100, 70, 480, 9],
+        ["Polar bear", "🐻‍❄️", 25, 450, 25, 250, 9], ["Giraffe", "🦒", 35, 1200, 25, 550, 4], ["Hippo", "🦛", 19, 1500, 40, 450, 10],
+        ["Gorilla", "🦍", 25, 160, 40, 180, 6], ["Saltwater crocodile", "🐊", 18, 1000, 70, 520, 10], ["Grey wolf", "🐺", 38, 45, 13, 180, 7],
+        ["Golden eagle", "🦅", 150, 6, 30, 220, 4], ["Red kangaroo", "🦘", 44, 85, 20, 250, 5], ["Horse", "🐎", 55, 500, 30, 240, 3],
+        ["White rhino", "🦏", 34, 2300, 45, 400, 8], ["Giant panda", "🐼", 20, 110, 20, 180, 4], ["Koala", "🐨", 18, 12, 15, 80, 1],
+        ["Sloth", "🦥", 0.2, 6, 20, 70, 1], ["Giant tortoise", "🐢", 0.2, 250, 150, 150, 1], ["Giant octopus", "🐙", 25, 15, 4, 400, 2],
+        ["Gentoo penguin", "🐧", 22, 8, 15, 80, 1], ["King cobra", "🐍", 12, 6, 20, 400, 9], ["Red fox", "🦊", 30, 7, 5, 120, 2],
+        ["Brown hare", "🐇", 45, 4, 5, 70, 1], ["Bottlenose dolphin", "🐬", 22, 300, 45, 350, 2], ["Orca", "🐳", 34, 5500, 60, 800, 6],
+        ["Grizzly bear", "🐻", 35, 300, 25, 250, 9], ["Zebra", "🦓", 40, 350, 25, 270, 4], ["Chimpanzee", "🐒", 25, 60, 45, 150, 7],
+        ["Hedgehog", "🦔", 6, 1, 4, 25, 1], ["Scarlet macaw", "🦜", 35, 1, 50, 105, 1],
+      ],
+    },
+  };
+  const ttVal = (d, id, st) => DECKS[d].cards[id][2 + st];
+  function ttAI(S, seat, level) {
+    const d = S.board.deck, nStats = DECKS[d].stats.length, top = S.board.top;
+    if (level === "easy") return Math.floor(Math.random() * nStats);
+    const mine = new Set((S.sec[seat] || []).concat(S.sec.pot || [])), others = DECKS[d].cards.map((_, i) => i).filter(i => !mine.has(i) && i !== top);
+    let best = -1, pick = 0;
+    for (let st = 0; st < nStats; st++) {
+      const v = ttVal(d, top, st); let sc = 0;
+      for (const o of others) { const w = ttVal(d, o, st); sc += v > w ? 1 : v === w ? .5 : 0; }
+      sc = others.length ? sc / others.length : .5;
+      if (sc > best) { best = sc; pick = st; }
+    }
+    if (level === "medium" && Math.random() < 0.3) return Math.floor(Math.random() * nStats);
+    return pick;
+  }
+
   // ===== THE GAME LIST =====
   // init(S): set S.board (everyone sees), S.sec (host only), S.turn (seat, or -1 when both act at once)
   // waiting(S, seat): does this seat need to act now?
@@ -304,6 +343,41 @@
       },
       ai: bsAI,
       randomFleet: bsRandomFleet,
+    },
+    tt: {
+      id: "tt", name: "Card Clash", local: false, MAX_ROUNDS: 30,
+      init(S) {
+        const deck = (S.opts && DECKS[S.opts.deck]) ? S.opts.deck : "animals";
+        const ids = DECKS[deck].cards.map((_, i) => i);
+        for (let i = ids.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [ids[i], ids[j]] = [ids[j], ids[i]]; }
+        const half = Math.floor(ids.length / 2);
+        S.sec = { 0: ids.slice(0, half), 1: ids.slice(half, half * 2), pot: [] };
+        S.turn = S.starter;
+        // only the chooser's top card is shown: the other player can't act on it, and their own card stays hidden until the reveal
+        S.board = { deck, count: [half, half], pot: 0, top: S.sec[S.starter][0], last: null, rounds: 0 };
+      },
+      waiting: turnWaiting,
+      move(S, seat, mv) {
+        const b = S.board, d = DECKS[b.deck];
+        if (!Number.isInteger(mv) || mv < 0 || mv >= d.stats.length) return false;
+        const a = S.sec[seat].shift(), z = S.sec[1 - seat].shift();
+        const va = ttVal(b.deck, a, mv), vz = ttVal(b.deck, z, mv);
+        const w = va > vz ? seat : vz > va ? 1 - seat : "draw";
+        const cards = seat === 0 ? [a, z] : [z, a];
+        if (w === "draw") S.sec.pot.push(a, z);
+        else { const won = w === seat ? [a, z] : [z, a]; S.sec[w].push(...won, ...S.sec.pot); S.sec.pot = []; }
+        b.rounds++;
+        b.last = { cards, stat: mv, w, by: seat, n: b.rounds };
+        b.count = [S.sec[0].length, S.sec[1].length]; b.pot = S.sec.pot.length;
+        if (w !== "draw") S.turn = w;
+        const out0 = !b.count[0], out1 = !b.count[1];
+        if (out0 || out1) S.result = { w: out0 && out1 ? "draw" : out0 ? 1 : 0, line: [] };
+        else if (b.rounds >= this.MAX_ROUNDS) S.result = { w: b.count[0] === b.count[1] ? "draw" : b.count[0] > b.count[1] ? 0 : 1, line: [] };
+        b.top = S.result ? null : S.sec[S.turn][0];
+        return "tt";
+      },
+      ai: ttAI,
+      DECKS,
     },
     rps: {
       id: "rps", name: "Rock Paper Scissors", local: false, TARGET: 3,

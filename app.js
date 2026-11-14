@@ -27,7 +27,7 @@ const LEVELS = { easy: "Easy", medium: "Medium", hard: "Hard" };
 // ===== WHO AM I =====
 const ME = { id: ls.get("h2h_pid", null), name: ls.get("h2h_name", "") };
 if (!ME.id) { ME.id = uid(); ls.set("h2h_pid", ME.id); }
-const PREF = Object.assign({ game: "ttt", level: "medium", sound: true }, ls.get("h2h_pref", {}));
+const PREF = Object.assign({ game: "ttt", level: "medium", sound: true, deck: "animals" }, ls.get("h2h_pref", {}));
 const savePref = () => ls.set("h2h_pref", PREF);
 
 
@@ -41,6 +41,7 @@ let qrCache = { url: null, img: null };
 let DRAFT = { k: "", ships: null };   // Battleships: fleet being placed
 let MYPICK = { k: "", v: null };      // Rock Paper Scissors: what a guest picked
 let REVEAL = { k: "", until: 0 };     // Rock Paper Scissors: hands shaking
+let TTSEEN = "";                      // Card Clash: last round result this phone has dismissed
 
 // ===== SOUND & BUZZ =====
 const Snd = {
@@ -72,6 +73,7 @@ const Snd = {
   hit() { this.noise(.6, .35, 0, 1400); this.tone(90, .35, "sine", .25, 0, 40); },
   sunk() { this.hit(); [392, 330, 262, 196].forEach((f, i) => this.tone(f, .2, "square", .05, .25 + i * .12)); },
   pick() { this.tone(520, .05, "square", .06); },
+  flip() { this.noise(.12, .12, 0, 3000); },
   ready() { this.tone(523, .08, "triangle", .1); this.tone(784, .12, "triangle", .1, .08); },
   shake() { [0, .33, .66].forEach(w => this.tone(140, .08, "sine", .2, w)); this.tone(880, .12, "triangle", .12, 1.0); },
   win() { [523, 659, 784, 1047].forEach((f, i) => this.tone(f, .2, "triangle", .14, i * .11)); },
@@ -146,7 +148,7 @@ function sendState() { if (T && S) T.send({ t: "state", s: pub(S) }); }
 function newState(game, room) {
   return { sid: uid(), v: 0, room, game, host: ME.id, players: [], seats: [null, null], queue: [], phase: "lobby",
     board: null, sec: {}, turn: 0, starter: 0, result: null, last: null, lastBy: -1, fx: null, moves: 0, round: 0, draws: 0,
-    level: PREF.level, acks: {} };
+    level: PREF.level, acks: {}, opts: { deck: PREF.deck } };
 }
 const pl = id => S && S.players.find(p => p.id === id);
 const nameOf = id => (pl(id) || {}).name || "Player";
@@ -202,12 +204,12 @@ function commit() {
 function maybeCPU() {
   if (MODE !== "cpu" || !S || S.phase !== "play" || cpuTimer) return;
   const cs = S.seats.indexOf("cpu");
-  if (cs < 0 || !G().waiting(S, cs)) return;
+  if (cs < 0 || !G().waiting(S, cs) || ttRevealPending()) return;
   const placing = S.game === "bs" && S.board.stage === "place";
   const extra = S.game === "rps" && REVEAL.until > Date.now() ? REVEAL.until - Date.now() : 0;
   cpuTimer = setTimeout(() => {
     cpuTimer = null;
-    if (MODE !== "cpu" || !S || S.phase !== "play" || !G().waiting(S, cs)) return;
+    if (MODE !== "cpu" || !S || S.phase !== "play" || !G().waiting(S, cs) || ttRevealPending()) return;
     const mv = G().ai(S, cs, S.level);
     if (applyMove("cpu", mv, S.turn >= 0 ? S.moves : null)) { afterMove(); commit(); }
   }, (placing ? 250 : S.game === "dots" ? 420 + Math.random() * 300 : 520 + Math.random() * 380) + extra);
@@ -225,6 +227,14 @@ function playFx(s) {
     case "sunk": Snd.sunk(); buzz([80, 50, 120]); break;
     case "pick": Snd.pick(); break;
     case "ready": Snd.ready(); break;
+    case "tt": {
+      const w = s.board.last.w, me = s.seats.indexOf(ME.id);
+      Snd.flip();
+      if (w === "draw") Snd.tone(440, .12, "sine", .1, .25);
+      else if (me < 0 || w === me) { Snd.tone(660, .1, "triangle", .13, .25); Snd.tone(990, .16, "triangle", .12, .33); }
+      else Snd.tone(300, .2, "sine", .12, .25, 200);
+      break;
+    }
     case "reveal": {
       REVEAL = { k: s.sid + ":" + s.round + ":" + s.board.hist.length, until: Date.now() + 1100 };
       Snd.shake(); setTimeout(() => { if (MODE !== "home") render(); }, 1150); break;
@@ -239,7 +249,7 @@ function resultFx() {
     const me = mySeat();
     if (me < 0 || r.w === me) { Snd.win(); confetti(); buzz([60, 40, 60]); } else { Snd.lose(); buzz(200); }
   };
-  if (S.fx === "reveal" || S.fx === "sunk") setTimeout(run, S.fx === "reveal" ? 1150 : 700); else run();
+  if (S.fx === "reveal" || S.fx === "sunk" || S.fx === "tt") setTimeout(run, S.fx === "reveal" ? 1150 : 700); else run();
 }
 function afterMove() { // sounds for the host and computer games
   playFx(S);
@@ -378,6 +388,8 @@ function myPick() {
   if (MODE !== "guest") return S.sec && S.sec[me];
   return MYPICK.k === secKey() + ":" + S.board.hist.length ? MYPICK.v : null;
 }
+function ttKey() { return S && S.game === "tt" && S.board && S.board.last ? S.sid + ":" + S.round + ":" + S.board.last.n : ""; }
+function ttRevealPending() { const k = ttKey(); return !!k && S.phase === "play" && TTSEEN !== k; }
 function draftFleet() {
   if (DRAFT.k !== secKey() || !DRAFT.ships) DRAFT = { k: secKey(), ships: GAMES.bs.randomFleet() };
   return DRAFT.ships;
@@ -414,6 +426,7 @@ function markFor(game, seat) {
   if (game === "dots") return `<svg viewBox="0 0 100 100"><rect x="14" y="14" width="72" height="72" rx="8" fill="var(--c)" opacity=".85"/></svg>`;
   if (game === "bs") return `<svg viewBox="0 0 100 100"><path d="M10 58h80l-12 18H22z" fill="var(--c)"/><rect x="34" y="40" width="30" height="16" rx="3" fill="var(--c)"/><rect x="46" y="26" width="6" height="16" fill="var(--c)"/></svg>`;
   if (game === "rps") return `<span style="font-size:24px;line-height:1">${seat ? "✋" : "✊"}</span>`;
+  if (game === "tt") return `<svg viewBox="0 0 100 100"><rect x="22" y="10" width="56" height="80" rx="9" fill="var(--c)"/><rect x="30" y="20" width="40" height="28" rx="5" fill="rgba(0,0,0,.25)"/><g fill="rgba(0,0,0,.25)"><rect x="30" y="56" width="40" height="5" rx="2"/><rect x="30" y="66" width="40" height="5" rx="2"/><rect x="30" y="76" width="28" height="5" rx="2"/></g></svg>`;
   return disc();
 }
 const GAME_ICON = {
@@ -422,6 +435,7 @@ const GAME_ICON = {
   dots: `<svg viewBox="0 0 120 120"><rect x="16" y="16" width="44" height="44" fill="#ff5d73" opacity=".35"/><rect x="60" y="60" width="44" height="44" fill="#ffd23f" opacity=".35"/><g stroke-width="6" stroke-linecap="round"><path d="M16 16H60V60H16Z" stroke="#ff5d73" fill="none"/><path d="M60 60H104V104H60Z" stroke="#ffd23f" fill="none"/><path d="M60 16H104" stroke="#ff5d73"/><path d="M16 60V104" stroke="#ffd23f"/></g>${[16, 60, 104].map(y => [16, 60, 104].map(x => `<circle cx="${x}" cy="${y}" r="7" fill="#eef2ff"/>`).join("")).join("")}</svg>`,
   bs: `<svg viewBox="0 0 120 120"><rect x="6" y="6" width="108" height="108" rx="12" fill="#12306b"/><g stroke="#2a4f9a" stroke-width="2">${[1, 2, 3, 4].map(k => `<line x1="${6 + k * 21.6}" y1="6" x2="${6 + k * 21.6}" y2="114"/><line x1="6" y1="${6 + k * 21.6}" x2="114" y2="${6 + k * 21.6}"/>`).join("")}</g><rect x="12" y="34" width="62" height="16" rx="8" fill="#9aa6c8"/><rect x="77" y="56" width="16" height="40" rx="8" fill="#9aa6c8"/><circle cx="41" cy="42" r="9" fill="#ff5d73"/><circle cx="60" cy="85" r="4" fill="#eef2ff"/><circle cx="25" cy="98" r="4" fill="#eef2ff"/></svg>`,
   rps: `<div style="font-size:30px;line-height:54px;letter-spacing:-2px">✊✋✌️</div>`,
+  tt: `<div class="ttico"><i>🦁</i><i>🐘</i></div>`,
 };
 
 function joinURL(room) { return location.origin + location.pathname + "?join=" + room + (LOCAL ? "&local" : ""); }
@@ -478,6 +492,7 @@ function renderHome() {
   <div class="card">
     <p class="label">Pick a game</p>
     ${gamePicker(PREF.game)}
+    ${PREF.game === "tt" ? `<div class="gap"></div><p class="label">Card Clash theme</p>${deckPicker(PREF.deck, "data-deck")}` : ""}
   </div>
   <button class="btn" data-act="host">📱 Play a friend<span class="sub">Get a QR code for them to scan</span></button>
   <div class="card" style="margin-top:22px">
@@ -566,7 +581,7 @@ function renderLobby() {
     ${n > 2 ? `<p class="small mut" style="margin:10px 0 0">Winner stays on. Everyone else waits their turn.</p>` : ""}
   </div>
   ${host ? `
-    <div class="card"><p class="label">Game</p>${gamePicker(S.game, "data-setgame")}</div>
+    <div class="card"><p class="label">Game</p>${gamePicker(S.game, "data-setgame")}${S.game === "tt" ? `<div class="gap"></div><p class="label">Theme</p>${deckPicker(S.opts && S.opts.deck, "data-setdeck")}` : ""}</div>
     <button class="btn green" data-act="start" ${n < 2 ? "disabled" : ""}>${n < 2 ? `<span class="wait">⏳</span> Waiting for someone to join` : "▶ Start the game"}</button>` : ""}
   <div class="foot"><button class="iconbtn" data-act="leave">Leave</button></div>`;
 }
@@ -691,6 +706,42 @@ function boardRPS(c) {
   return arena + sc + picker + strip;
 }
 
+function fmtStat(v, u) {
+  if (u === "kg") return v < 1 ? Math.round(v * 1000) + " g" : v.toLocaleString("en-GB") + " kg";
+  if (u === "/10") return v + "/10";
+  return v.toLocaleString("en-GB") + " " + u;
+}
+function ttCard(d, id, o = {}) {
+  const c = d.cards[id], tag = o.pick ? "button" : "div";
+  return `<div class="ttcard p${o.seat} ${o.mini ? "mini" : ""} ${o.win ? "won" : ""} ${o.lost ? "lost" : ""} ${o.flip ? "flip" : ""}">
+    <div class="ttpic">${c[1]}</div><div class="ttname">${esc(c[0])}</div>
+    <div class="ttstats">${d.stats.map((st, i) => `<${tag} class="ttrow ${o.hl === i ? "hl" : ""}" ${o.pick ? `data-tt="${i}"` : ""}><span>${st.l}</span><b>${fmtStat(c[2 + i], st.u)}</b></${tag}>`).join("")}</div>
+  </div>`;
+}
+const ttBack = (seat, label) => `<div class="ttcard back p${seat}"><div class="ttbackin"><span>?</span></div><div class="ttname">${label}</div></div>`;
+function boardTT(c) {
+  const b = S.board, me = c.me, d = GAMES.tt.DECKS[b.deck], left = me < 0 ? 0 : me, right = 1 - left;
+  const nm = seat => S.seats[seat] === ME.id ? "Your" : esc(nameOf(S.seats[seat])) + "'s";
+  let h = "";
+  if (b.last && (ttRevealPending() || S.phase === "over")) {
+    const L = b.last, st = d.stats[L.stat];
+    h = `<div class="ttpair">${ttCard(d, L.cards[left], { seat: left, hl: L.stat, mini: true, win: L.w === left, lost: L.w === right })}${ttCard(d, L.cards[right], { seat: right, hl: L.stat, mini: true, win: L.w === right, lost: L.w === left, flip: c.animate })}</div>
+      <p class="center rline">${st.l}: ${fmtStat(d.cards[L.cards[left]][2 + L.stat], st.u)} vs ${fmtStat(d.cards[L.cards[right]][2 + L.stat], st.u)}</p>
+      ${S.phase === "play" ? `<button class="btn" data-act="ttnext">Next card ▶</button>` : ""}`;
+  } else if (me >= 0 && S.turn === me) {
+    h = `${ttCard(d, b.top, { seat: me, pick: !pending })}<p class="center small mut" style="margin:10px 0 0">Tap the stat you think beats their card</p>`;
+  } else if (me >= 0) {
+    h = `<div class="ttpair">${ttBack(me, "Your card")}${ttBack(1 - me, nm(1 - me) + " card")}</div><p class="center mut" style="margin-top:12px">Both cards stay face down until they pick.</p>`;
+  } else {
+    h = `<div class="ttpair">${ttCard(d, b.top, { seat: S.turn, mini: true })}${ttBack(1 - S.turn, nm(1 - S.turn) + " card")}</div>`;
+  }
+  const info = [b.pot ? `${b.pot} card${b.pot > 1 ? "s" : ""} in the middle` : "", S.phase === "play" ? `Round ${b.rounds + (ttRevealPending() ? 0 : 1)} of ${GAMES.tt.MAX_ROUNDS}` : ""].filter(Boolean).join(" · ");
+  return h + `<div class="ttinfo">${info}</div><p class="center small mut" style="margin-top:6px">${d.icon} ${esc(d.name)}: ${esc(d.note)}</p>`;
+}
+function deckPicker(sel, attr) {
+  return `<div class="seg decks">${Object.values(GAMES.tt.DECKS).map(d => `<button class="${sel === d.id ? "on" : ""}" ${attr}="${d.id}">${d.icon} ${esc(d.name)}</button>`).join("")}<button disabled>More themes soon</button></div>`;
+}
+
 function renderGame() {
   const g = G(), me = mySeat(), shaking = revealing(), over = S.phase === "over" && !shaking;
   const myTurn = S.phase === "play" && waiting(me);
@@ -707,6 +758,7 @@ function renderGame() {
     if (S.phase === "play") sub = w ? (simul ? "choosing…" : id === "cpu" ? "thinking…" : "to play") : simul ? "ready ✓" : "";
     else if (over && S.result.w === seat) sub = "wins!";
     if (S.game === "dots" && !(over && S.result.w === seat)) sub = `${S.board.score[seat]} box${S.board.score[seat] === 1 ? "" : "es"}`;
+    if (S.game === "tt" && !(over && S.result.w === seat)) sub = `${S.board.count[seat]} card${S.board.count[seat] === 1 ? "" : "s"}`;
     return `<div class="chip p${seat} ${side} ${w && !simul ? "turn" : ""}"><span class="mk">${markFor(S.game, seat)}</span><span class="nm"><b>${label}</b><span>${sub}&nbsp;</span></span></div>`;
   };
   const w0 = (pl(S.seats[0]) || {}).wins || 0, w1 = (pl(S.seats[1]) || {}).wins || 0;
@@ -715,9 +767,16 @@ function renderGame() {
   if (S.phase === "play" || shaking) {
     const bsPlace = S.game === "bs" && S.board.stage === "place";
     if (shaking) status = "3… 2… 1…";
+    else if (S.game === "tt" && ttRevealPending()) {
+      const L = S.board.last;
+      if (L.w === "draw") status = "Draw! Both cards go in the middle";
+      else if (S.seats[L.w] === ME.id) { status = "You win the round!"; cls = "me"; }
+      else status = `${esc(nameOf(S.seats[L.w]))} wins the round`;
+      if (L.w === "draw") sub = "Whoever wins the next round takes them all";
+    }
     else if (myTurn) {
       cls = "me";
-      status = bsPlace ? "Place your fleet" : S.game === "rps" ? "Pick your move" : "Your turn";
+      status = bsPlace ? "Place your fleet" : S.game === "rps" ? "Pick your move" : S.game === "tt" ? "Pick a stat" : "Your turn";
       if (S.game === "dots" && S.lastBy === me && S.fx === "box") sub = "Box! Go again";
       if (S.game === "bs" && S.last && S.last.seat !== me) sub = S.last.sunk ? "They sank your ship!" : S.last.hit ? "They hit you!" : "They missed";
     } else if (S.turn < 0) {
@@ -725,7 +784,7 @@ function renderGame() {
       status = wait.length ? `Waiting for ${wait.join(" and ")}…` : "…";
       if (bsPlace && me >= 0) sub = "They're placing their ships";
     } else if (S.seats[S.turn] === "cpu") status = "Computer is thinking…";
-    else status = `${esc(nameOf(S.seats[S.turn]))}'s turn`;
+    else status = S.game === "tt" ? `${esc(nameOf(S.seats[S.turn]))} is choosing…` : `${esc(nameOf(S.seats[S.turn]))}'s turn`;
     if (!myTurn && S.game === "bs" && S.last && S.last.seat === me) sub = S.last.sunk ? "You sank a ship! 🚢" : S.last.hit ? "Hit! 💥" : "Miss";
     if (S.game === "dots" && !myTurn && S.lastBy >= 0 && S.lastBy !== me && S.fx === "box" && me >= 0) sub = "They got a box and go again";
     if (pending && MODE === "guest" && !g.local) sub = "Sending…";
@@ -737,9 +796,10 @@ function renderGame() {
     if (S.game === "dots") sub = `Boxes ${S.board.score[0]} – ${S.board.score[1]}`;
     if (S.game === "rps") sub = `${S.board.score[0]} – ${S.board.score[1]}`;
     if (S.game === "bs") sub = "Every ship sunk";
+    if (S.game === "tt") sub = S.board.count[0] && S.board.count[1] ? `Most cards after ${GAMES.tt.MAX_ROUNDS} rounds: ${S.board.count[0]} – ${S.board.count[1]}` : "Won every card";
   }
 
-  const board = { ttt: boardTTT, c4: boardC4, dots: boardDots, bs: boardBS, rps: boardRPS }[S.game](c);
+  const board = { ttt: boardTTT, c4: boardC4, dots: boardDots, bs: boardBS, rps: boardRPS, tt: boardTT }[S.game](c);
 
   let after = "";
   if (over) {
@@ -751,7 +811,7 @@ function renderGame() {
     }
     after = `<div class="after">${nextNote}
       ${me >= 0 || host ? `<button class="btn green" data-act="again">🔁 Play again</button>` : `<p class="center mut">Waiting for the next game…</p>`}
-      ${host ? `<div class="card"><p class="label">Switch game</p>${gamePicker(S.game, "data-setgame")}${MODE === "cpu" ? `<div class="gap"></div><p class="label">Computer level</p>${levelSeg(S.level, "data-setlevel")}` : ""}</div>` : ""}
+      ${host ? `<div class="card"><p class="label">Switch game</p>${gamePicker(S.game, "data-setgame")}${S.game === "tt" ? `<div class="gap"></div><p class="label">Card Clash theme</p>${deckPicker(S.opts && S.opts.deck, "data-setdeck")}` : ""}${MODE === "cpu" ? `<div class="gap"></div><p class="label">Computer level</p>${levelSeg(S.level, "data-setlevel")}` : ""}</div>` : ""}
     </div>`;
   }
 
@@ -773,12 +833,15 @@ function renderGame() {
 
 // ===== TAPS =====
 app.addEventListener("click", e => {
-  const el = e.target.closest("[data-act],[data-mv],[data-fire],[data-rps],[data-pickgame],[data-setgame],[data-level],[data-setlevel],[data-kick]");
+  const el = e.target.closest("[data-act],[data-mv],[data-fire],[data-rps],[data-tt],[data-deck],[data-setdeck],[data-pickgame],[data-setgame],[data-level],[data-setlevel],[data-kick]");
   if (!el) return;
   const d = el.dataset;
   if (d.mv != null) return myMove(Number(d.mv));
   if (d.fire != null) return myMove({ fire: Number(d.fire) });
   if (d.rps) return myMove(d.rps);
+  if (d.tt != null) return myMove(Number(d.tt));
+  if (d.deck) { PREF.deck = d.deck; savePref(); return renderHome(); }
+  if (d.setdeck) { if (MODE === "host" || MODE === "cpu") { PREF.deck = d.setdeck; savePref(); S.opts = Object.assign({}, S.opts, { deck: d.setdeck }); commit(); } return; }
   if (d.pickgame) { PREF.game = d.pickgame; savePref(); return renderHome(); }
   if (d.level) { PREF.level = d.level; savePref(); return renderHome(); }
   if (d.setgame) {
@@ -811,6 +874,7 @@ app.addEventListener("click", e => {
     case "sound": PREF.sound = !PREF.sound; savePref(); Snd.init(); return render();
     case "shuffle": DRAFT = { k: secKey(), ships: GAMES.bs.randomFleet() }; Snd.pick(); return render();
     case "ready": return myMove({ ships: draftFleet() });
+    case "ttnext": TTSEEN = ttKey(); render(); return maybeCPU();
   }
 });
 app.addEventListener("keydown", e => {
