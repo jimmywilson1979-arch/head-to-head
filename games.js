@@ -395,6 +395,68 @@
     return { ask: rnd(useful.filter(o => Math.abs(o.yes - o.no) === best)).qi };
   }
 
+
+  // ===== MINI GOLF ===== course is 200 x 340 units, tee at the bottom. Only + - * / and sqrt, so every phone gets the same result.
+  const GW = 200, GH = 340, BALL_R = 5, CUP_R = 8, MAXV = 9, MAX_STROKES = 6;
+  const box = (x, y, w, h) => [[x, y], [x + w, y], [x + w, y + h], [x, y + h]];
+  const HOLES = [
+    { name: "Straight Up", par: 2, outline: box(30, 20, 140, 300), blocks: [], sand: [], water: [], tee: [100, 290], cup: [100, 62] },
+    { name: "Dog Leg", par: 3, outline: [[20, 320], [90, 320], [90, 110], [180, 110], [180, 20], [20, 20]], blocks: [], sand: [], water: [], tee: [55, 290], cup: [150, 58] },
+    { name: "Building Blocks", par: 3, outline: box(20, 20, 160, 300), blocks: [box(36, 190, 56, 18), box(108, 120, 56, 18), box(76, 250, 48, 14)], sand: [], water: [], tee: [100, 296], cup: [100, 50] },
+    { name: "Beach Hut", par: 3, outline: box(20, 20, 160, 300), blocks: [], sand: [[110, 80, 70, 44]], water: [[20, 150, 104, 40]], tee: [100, 296], cup: [140, 50] },
+    { name: "Mind the Gap", par: 3, outline: box(20, 20, 160, 300), blocks: [box(20, 166, 66, 10), box(114, 166, 66, 10)], sand: [[60, 30, 80, 30]], water: [], tee: [60, 296], cup: [140, 50] },
+    { name: "Zig Zag", par: 4, outline: box(20, 20, 160, 300), blocks: [box(20, 232, 122, 12), box(58, 146, 122, 12)], sand: [], water: [[138, 70, 42, 50]], tee: [160, 296], cup: [120, 48] },
+  ];
+  const segsOf = poly => poly.map((p, i) => [p[0], p[1], poly[(i + 1) % poly.length][0], poly[(i + 1) % poly.length][1]]);
+  HOLES.forEach(h => { h.segs = segsOf(h.outline).concat(...h.blocks.map(segsOf)); });
+  const inRect = (x, y, r) => x >= r[0] && x <= r[0] + r[2] && y >= r[1] && y <= r[1] + r[3];
+  function golfSim(hole, x, y, vx, vy, onStep) {
+    const h = HOLES[hole];
+    for (let step = 0; step < 4000; step++) {
+      const sp = Math.sqrt(vx * vx + vy * vy);
+      const sand = h.sand.some(r => inRect(x, y, r));
+      const k = sand ? 0.93 : 0.988;
+      vx *= k; vy *= k;
+      if (sp < 0.05) return { x, y, in: false, water: false };
+      const n = Math.ceil(sp / 2);
+      for (let s = 0; s < n; s++) {
+        x += vx / n; y += vy / n;
+        for (const g of h.segs) {
+          const ax = g[0], ay = g[1], bx = g[2], by = g[3], ex = bx - ax, ey = by - ay;
+          let t = ((x - ax) * ex + (y - ay) * ey) / (ex * ex + ey * ey); t = t < 0 ? 0 : t > 1 ? 1 : t;
+          const cx = ax + ex * t, cy = ay + ey * t, dx = x - cx, dy = y - cy, d2 = dx * dx + dy * dy;
+          if (d2 < BALL_R * BALL_R && d2 > 1e-9) {
+            const d = Math.sqrt(d2), nx = dx / d, ny = dy / d;
+            x = cx + nx * BALL_R; y = cy + ny * BALL_R;
+            const vn = vx * nx + vy * ny;
+            if (vn < 0) { vx -= 1.8 * vn * nx; vy -= 1.8 * vn * ny; }
+          }
+        }
+      }
+      const cdx = x - h.cup[0], cdy = y - h.cup[1];
+      if (cdx * cdx + cdy * cdy < CUP_R * CUP_R && sp < 2.8) { if (onStep) onStep(h.cup[0], h.cup[1]); return { x: h.cup[0], y: h.cup[1], in: true, water: false }; }
+      if (h.water.some(r => inRect(x, y, r))) { if (onStep) onStep(x, y); return { x, y, in: false, water: true }; }
+      if (onStep) onStep(x, y);
+    }
+    return { x, y, in: false, water: false };
+  }
+  function golfAI(S, seat, level) {
+    const b = S.board, ball = b.balls[seat], h = HOLES[b.hole];
+    const N = level === "hard" ? 260 : level === "medium" ? 90 : 30;
+    const base = Math.atan2(h.cup[1] - ball.y, h.cup[0] - ball.x);
+    const score = (vx, vy) => { const r = golfSim(b.hole, ball.x, ball.y, vx, vy); if (r.in) return -1000 + Math.sqrt(vx * vx + vy * vy); if (r.water) return 500; const dx = r.x - h.cup[0], dy = r.y - h.cup[1]; return Math.sqrt(dx * dx + dy * dy); };
+    let best = null;
+    const tryShot = (a, p) => { const vx = Math.cos(a) * p, vy = Math.sin(a) * p, sc = score(vx, vy); if (!best || sc < best.sc) best = { a, p, sc }; };
+    for (let i = 0; i < N; i++) {
+      const a = Math.random() < 0.5 ? base + (Math.random() - 0.5) * 0.9 : Math.random() * Math.PI * 2;
+      tryShot(a, 0.8 + Math.random() * (MAXV - 0.8));
+    }
+    if (level === "hard") for (let i = 0; i < 80; i++) tryShot(best.a + (Math.random() - 0.5) * 0.08, Math.min(MAXV, Math.max(0.6, best.p * (0.92 + Math.random() * 0.16))));
+    const wob = level === "hard" ? 0.012 : level === "medium" ? 0.05 : 0.12, pw = level === "hard" ? 0.04 : level === "medium" ? 0.1 : 0.22;
+    const a = best.a + (Math.random() - 0.5) * 2 * wob, p = Math.min(MAXV, best.p * (1 + (Math.random() - 0.5) * 2 * pw));
+    return { vx: Math.round(Math.cos(a) * p * 1000) / 1000, vy: Math.round(Math.sin(a) * p * 1000) / 1000 };
+  }
+
   // ===== THE GAME LIST =====
   // init(S): set S.board (everyone sees), S.sec (host only), S.turn (seat, or -1 when both act at once)
   // waiting(S, seat): does this seat need to act now?
@@ -534,6 +596,47 @@
         return false;
       },
       ai: wiAI,
+    },
+    golf: {
+      id: "golf", name: "Mini Golf", local: false, HOLES, GW, GH, BALL_R, CUP_R, MAXV, MAX_STROKES, sim: golfSim,
+      init(S) {
+        const t = HOLES[0].tee;
+        S.board = { hole: 0, balls: [0, 1].map(() => ({ x: t[0], y: t[1], in: false, strokes: 0 })), scores: [[], []], shots: 0 };
+        S.sec = {}; S.turn = S.starter;
+      },
+      waiting: turnWaiting,
+      move(S, seat, mv) {
+        const b = S.board;
+        if (!mv || typeof mv.vx !== "number" || typeof mv.vy !== "number" || !isFinite(mv.vx) || !isFinite(mv.vy)) return false;
+        const vx = Math.round(mv.vx * 1000) / 1000, vy = Math.round(mv.vy * 1000) / 1000;
+        if (Math.sqrt(vx * vx + vy * vy) > MAXV + 0.01 || (vx === 0 && vy === 0)) return false;
+        const ball = b.balls[seat], from = [ball.x, ball.y], hole = b.hole;
+        const r = golfSim(hole, ball.x, ball.y, vx, vy);
+        ball.strokes++;
+        if (r.water) ball.strokes++; else { ball.x = r.x; ball.y = r.y; }
+        if (r.in) ball.in = true;
+        else if (ball.strokes >= MAX_STROKES) { ball.in = true; ball.strokes = MAX_STROKES + 1; ball.gaveUp = true; }
+        b.shots++;
+        S.last = { seat, hole, from, vx, vy, n: b.shots, water: r.water, sunk: r.in };
+        let fx = r.in ? "sunk" : r.water ? "splash" : "putt";
+        const other = b.balls[1 - seat];
+        if (!other.in) S.turn = 1 - seat;
+        else if (!ball.in) S.turn = seat;
+        else { // hole finished
+          b.scores[0].push(b.balls[0].strokes); b.scores[1].push(b.balls[1].strokes);
+          const sc0 = b.balls[0].strokes, sc1 = b.balls[1].strokes;
+          if (b.hole === HOLES.length - 1) {
+            const t0 = b.scores[0].reduce((a, z) => a + z, 0), t1 = b.scores[1].reduce((a, z) => a + z, 0);
+            S.result = { w: t0 === t1 ? "draw" : t0 < t1 ? 0 : 1, line: [] };
+          } else {
+            b.hole++; const t = HOLES[b.hole].tee;
+            b.balls = [0, 1].map(() => ({ x: t[0], y: t[1], in: false, strokes: 0 }));
+            S.turn = sc0 === sc1 ? 1 - S.turn : sc0 < sc1 ? 0 : 1; // best score last hole goes first
+          }
+        }
+        return fx;
+      },
+      ai: golfAI,
     },
     rps: {
       id: "rps", name: "Rock Paper Scissors", local: false, TARGET: 3,

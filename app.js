@@ -43,6 +43,7 @@ let MYPICK = { k: "", v: null };      // Rock Paper Scissors: what a guest picke
 let REVEAL = { k: "", until: 0 };     // Rock Paper Scissors: hands shaking
 let TTSEEN = "";                      // Card Clash: last round result this phone has dismissed
 let WI = { k: "", pick: null, guessing: false, qOpen: false }; // Who Is It?: my draft pick, guess mode
+let GOLF = { anim: null, seen: "", aim: null, banner: null };   // Mini Golf: ball animation, my aim while dragging
 
 // ===== SOUND & BUZZ =====
 const Snd = {
@@ -205,7 +206,8 @@ function commit() {
 function maybeCPU() {
   if (MODE !== "cpu" || !S || S.phase !== "play" || cpuTimer) return;
   const cs = S.seats.indexOf("cpu");
-  if (cs < 0 || !G().waiting(S, cs) || ttRevealPending()) return;
+  if (cs < 0 || !G().waiting(S, cs) || ttRevealPending() || GOLF.anim) return;
+  if (GOLF.banner && Date.now() < GOLF.banner.until) { setTimeout(maybeCPU, GOLF.banner.until - Date.now() + 60); return; }
   const placing = S.game === "bs" && S.board.stage === "place";
   const extra = S.game === "rps" && REVEAL.until > Date.now() ? REVEAL.until - Date.now() : 0;
   cpuTimer = setTimeout(() => {
@@ -231,6 +233,7 @@ function playFx(s) {
     case "yes": Snd.tone(660, .1, "triangle", .12); Snd.tone(880, .14, "triangle", .12, .09); break;
     case "no": Snd.tone(330, .12, "triangle", .12); Snd.tone(260, .16, "triangle", .12, .1); break;
     case "wrong": Snd.lose(); break;
+    case "putt": case "sunk": case "splash": golfStartAnim(s); break;
     case "right": break;
     case "tt": {
       const w = s.board.last.w, me = s.seats.indexOf(ME.id);
@@ -254,7 +257,8 @@ function resultFx() {
     const me = mySeat();
     if (me < 0 || r.w === me) { Snd.win(); confetti(); buzz([60, 40, 60]); } else { Snd.lose(); buzz(200); }
   };
-  if (S.fx === "reveal" || S.fx === "sunk" || S.fx === "tt") setTimeout(run, S.fx === "reveal" ? 1150 : 700); else run();
+  if (S.game === "golf") setTimeout(run, golfAnimLeft() + 300);
+  else if (S.fx === "reveal" || S.fx === "sunk" || S.fx === "tt") setTimeout(run, S.fx === "reveal" ? 1150 : 700); else run();
 }
 function afterMove() { // sounds for the host and computer games
   playFx(S);
@@ -316,6 +320,7 @@ function guestMsg(m) {
       if (s.acks && s.acks[ME.id] === pending.mid) pending = null;
       else if (prev && GAMES[prev.game].local && s.sid === prev.sid && Date.now() - pending.first < 6000) return; // keep showing my move until the host has it
     }
+    if (prev && prev.sid === s.sid && prev.v === s.v && !pending) { S = s; return; }
     S = s;
     if (!prev || prev.sid !== s.sid) { render(); return; }
     const me = s.seats.indexOf(ME.id);
@@ -436,6 +441,7 @@ function markFor(game, seat) {
   if (game === "dots") return `<svg viewBox="0 0 100 100"><rect x="14" y="14" width="72" height="72" rx="8" fill="var(--c)" opacity=".85"/></svg>`;
   if (game === "bs") return `<svg viewBox="0 0 100 100"><path d="M10 58h80l-12 18H22z" fill="var(--c)"/><rect x="34" y="40" width="30" height="16" rx="3" fill="var(--c)"/><rect x="46" y="26" width="6" height="16" fill="var(--c)"/></svg>`;
   if (game === "rps") return `<span style="font-size:24px;line-height:1">${seat ? "✋" : "✊"}</span>`;
+  if (game === "golf") return `<svg viewBox="0 0 100 100"><circle cx="50" cy="56" r="30" fill="#fff" stroke="var(--c)" stroke-width="10"/><g fill="#d5d9e6"><circle cx="42" cy="48" r="4"/><circle cx="56" cy="46" r="4"/><circle cx="50" cy="60" r="4"/><circle cx="62" cy="60" r="4"/><circle cx="38" cy="62" r="4"/></g></svg>`;
   if (game === "wi") return `<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="42" fill="var(--c)"/><text x="50" y="68" text-anchor="middle" font-family="Fredoka" font-weight="700" font-size="52" fill="#0b1020">?</text></svg>`;
   if (game === "tt") return `<svg viewBox="0 0 100 100"><rect x="22" y="10" width="56" height="80" rx="9" fill="var(--c)"/><rect x="30" y="20" width="40" height="28" rx="5" fill="rgba(0,0,0,.25)"/><g fill="rgba(0,0,0,.25)"><rect x="30" y="56" width="40" height="5" rx="2"/><rect x="30" y="66" width="40" height="5" rx="2"/><rect x="30" y="76" width="28" height="5" rx="2"/></g></svg>`;
   return disc();
@@ -446,6 +452,7 @@ const GAME_ICON = {
   dots: `<svg viewBox="0 0 120 120"><rect x="16" y="16" width="44" height="44" fill="#ff5d73" opacity=".35"/><rect x="60" y="60" width="44" height="44" fill="#ffd23f" opacity=".35"/><g stroke-width="6" stroke-linecap="round"><path d="M16 16H60V60H16Z" stroke="#ff5d73" fill="none"/><path d="M60 60H104V104H60Z" stroke="#ffd23f" fill="none"/><path d="M60 16H104" stroke="#ff5d73"/><path d="M16 60V104" stroke="#ffd23f"/></g>${[16, 60, 104].map(y => [16, 60, 104].map(x => `<circle cx="${x}" cy="${y}" r="7" fill="#eef2ff"/>`).join("")).join("")}</svg>`,
   bs: `<svg viewBox="0 0 120 120"><rect x="6" y="6" width="108" height="108" rx="12" fill="#12306b"/><g stroke="#2a4f9a" stroke-width="2">${[1, 2, 3, 4].map(k => `<line x1="${6 + k * 21.6}" y1="6" x2="${6 + k * 21.6}" y2="114"/><line x1="6" y1="${6 + k * 21.6}" x2="114" y2="${6 + k * 21.6}"/>`).join("")}</g><rect x="12" y="34" width="62" height="16" rx="8" fill="#9aa6c8"/><rect x="77" y="56" width="16" height="40" rx="8" fill="#9aa6c8"/><circle cx="41" cy="42" r="9" fill="#ff5d73"/><circle cx="60" cy="85" r="4" fill="#eef2ff"/><circle cx="25" cy="98" r="4" fill="#eef2ff"/></svg>`,
   rps: `<div style="font-size:30px;line-height:54px;letter-spacing:-2px">✊✋✌️</div>`,
+  golf: `<svg viewBox="0 0 120 104"><rect x="6" y="6" width="108" height="92" rx="14" fill="#46ad5f" stroke="#a46a3c" stroke-width="6"/><circle cx="84" cy="34" r="8" fill="#0d1a10"/><line x1="84" y1="34" x2="84" y2="8" stroke="#eee" stroke-width="2.5"/><path d="M84 8 L100 13 L84 18Z" fill="#ff5d73"/><circle cx="36" cy="76" r="7" fill="#fff" stroke="#ff5d73" stroke-width="2"/><path d="M40 70 Q60 50 78 40" stroke="#fff" stroke-width="2" stroke-dasharray="3 4" fill="none"/></svg>`,
   wi: `<div class="wiico">${[3, 14, 18].map(i => `<i>${faceSVG(i)}</i>`).join("")}</div>`,
   tt: `<div class="ttico"><i>🦁</i><i>🐘</i></div>`,
 };
@@ -839,6 +846,140 @@ function boardWI(c) {
     <div class="wiinfo">${me >= 0 && mine != null ? `<span class="wime">${faceSVG(mine)}<span>You are <b>${esc(P[mine].name)}</b></span></span>` : ""}<span class="mut small">${me >= 0 ? "Your board" : nm(view) + "'s board"}: ${left} left${me >= 0 ? ` · ${esc(nameOf(S.seats[1 - me]))}: ${b.down[1 - me].filter(x => !x).length} left` : ""}</span></div>
     ${controls}${grid}${hist}`;
 }
+// ----- mini golf -----
+function golfStartAnim(s) {
+  const L = s.last; if (!L) return;
+  const key = s.sid + ":" + s.round + ":" + L.n;
+  if (GOLF.seen === key) return;
+  GOLF.seen = key;
+  const g = GAMES.golf, pts = [];
+  let k = 0;
+  g.sim(L.hole, L.from[0], L.from[1], L.vx, L.vy, (x, y) => { if (k++ % 3 === 0) pts.push([x, y]); });
+  pts.push(null); // end marker
+  GOLF.anim = { key, hole: L.hole, seat: L.seat, pts, i: 0, water: L.water, sunk: L.sunk, from: L.from, t0: performance.now() };
+  Snd.tone(300, .05, "triangle", .14); Snd.noise(.05, .12, 0, 2500);
+  if (s.board.hole !== L.hole) GOLF.banner = { hole: L.hole, until: 0 };
+  golfLoop();
+}
+function golfAnimLeft() { const a = GOLF.anim; return a ? Math.max(0, (a.pts.length - a.i) * 16) : 0; }
+let golfRaf = 0, golfTimer = 0;
+function golfLoop() {
+  cancelAnimationFrame(golfRaf); clearInterval(golfTimer);
+  // moves by the clock, so a phone that pauses drawing (screen off, other app) still finishes the shot
+  golfTimer = setInterval(() => { if (GOLF.anim) tick(false); else clearInterval(golfTimer); }, 120);
+  const tick = (fromFrame = true) => {
+    const a = GOLF.anim;
+    if (!a) return;
+    a.i = Math.min(a.pts.length - 1, Math.floor((performance.now() - a.t0) / 16));
+    if (a.pts[a.i] === null) {
+      clearInterval(golfTimer);
+      GOLF.anim = null;
+      if (a.sunk) { Snd.tone(523, .1, "triangle", .14); Snd.tone(784, .16, "triangle", .14, .1); Snd.tone(1047, .2, "triangle", .12, .2); buzz(40); }
+      else if (a.water) { Snd.miss(); toast("Splash! Back where you were, plus a penalty stroke"); }
+      if (GOLF.banner) GOLF.banner.until = Date.now() + 2600;
+      render(); if (GOLF.banner) setTimeout(() => { if (S && S.game === "golf") render(); }, 2700);
+      maybeCPU();
+      return;
+    }
+    drawGolf();
+    if (fromFrame) golfRaf = requestAnimationFrame(() => tick(true));
+  };
+  golfRaf = requestAnimationFrame(() => tick(true));
+}
+function golfView(cv) {
+  const g = GAMES.golf, wrap = cv.parentElement, w = wrap.clientWidth - 8;
+  const h = Math.min(w * g.GH / g.GW, window.innerHeight * 0.66);
+  const sc = Math.min(w / g.GW, h / g.GH), dpr = window.devicePixelRatio || 1;
+  const cw = Math.round(g.GW * sc), ch = Math.round(g.GH * sc);
+  if (cv.width !== cw * dpr) { cv.width = cw * dpr; cv.height = ch * dpr; cv.style.width = cw + "px"; cv.style.height = ch + "px"; }
+  return { sc, dpr };
+}
+function drawGolf() {
+  const cv = document.getElementById("golfcv"); if (!cv || !S || S.game !== "golf") return;
+  const g = GAMES.golf, b = S.board, a = GOLF.anim, holeIx = a ? a.hole : b.hole, H = g.HOLES[holeIx];
+  const { sc, dpr } = golfView(cv), c = cv.getContext("2d");
+  c.setTransform(dpr * sc, 0, 0, dpr * sc, 0, 0);
+  c.clearRect(0, 0, g.GW, g.GH);
+  const poly = pts => { c.beginPath(); pts.forEach((p, i) => i ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1])); c.closePath(); };
+  // grass with mowing stripes
+  c.save(); poly(H.outline); c.clip();
+  for (let y = 0; y < g.GH; y += 20) { c.fillStyle = (y / 20) % 2 ? "#3fa257" : "#46ad5f"; c.fillRect(0, y, g.GW, 20); }
+  H.sand.forEach(r => { c.fillStyle = "#ead595"; c.beginPath(); c.roundRect(r[0], r[1], r[2], r[3], 10); c.fill(); c.fillStyle = "rgba(160,120,40,.25)"; for (let i = 0; i < 18; i++) c.fillRect(r[0] + (i * 37 % r[2]), r[1] + (i * 23 % r[3]), 1.4, 1.4); });
+  H.water.forEach(r => { c.fillStyle = "#2f7fd8"; c.beginPath(); c.roundRect(r[0], r[1], r[2], r[3], 8); c.fill(); c.strokeStyle = "rgba(255,255,255,.45)"; c.lineWidth = 1.2; for (let y = r[1] + 8; y < r[1] + r[3]; y += 10) { c.beginPath(); for (let x = r[0] + 4; x < r[0] + r[2] - 4; x += 8) { c.moveTo(x, y); c.quadraticCurveTo(x + 2, y - 2, x + 4, y); } c.stroke(); } });
+  c.restore();
+  // tee and cup
+  c.fillStyle = "rgba(255,255,255,.25)"; c.fillRect(H.tee[0] - 9, H.tee[1] - 3, 18, 6);
+  c.fillStyle = "#0d1a10"; c.beginPath(); c.arc(H.cup[0], H.cup[1], g.CUP_R, 0, Math.PI * 2); c.fill();
+  c.strokeStyle = "#ddd"; c.lineWidth = 1.2; c.beginPath(); c.moveTo(H.cup[0], H.cup[1]); c.lineTo(H.cup[0], H.cup[1] - 30); c.stroke();
+  c.fillStyle = "#ff5d73"; c.beginPath(); c.moveTo(H.cup[0], H.cup[1] - 30); c.lineTo(H.cup[0] + 16, H.cup[1] - 25); c.lineTo(H.cup[0], H.cup[1] - 20); c.fill();
+  // walls
+  c.lineCap = "round"; c.lineJoin = "round";
+  const wall = pts => { poly(pts); c.strokeStyle = "#5b3a1f"; c.lineWidth = 7; c.stroke(); c.strokeStyle = "#a46a3c"; c.lineWidth = 4; c.stroke(); };
+  wall(H.outline);
+  H.blocks.forEach(bk => { poly(bk); c.fillStyle = "#a46a3c"; c.fill(); c.strokeStyle = "#5b3a1f"; c.lineWidth = 3; c.stroke(); });
+  // balls
+  const me = mySeat();
+  const ballAt = (x, y, seat, ghost) => {
+    c.globalAlpha = ghost ? .55 : 1;
+    c.fillStyle = "rgba(0,0,0,.25)"; c.beginPath(); c.arc(x + 1.2, y + 1.6, g.BALL_R, 0, Math.PI * 2); c.fill();
+    c.fillStyle = "#fff"; c.beginPath(); c.arc(x, y, g.BALL_R, 0, Math.PI * 2); c.fill();
+    c.strokeStyle = seat ? "#ffd23f" : "#ff5d73"; c.lineWidth = 2.2; c.stroke(); c.globalAlpha = 1;
+  };
+  [0, 1].forEach(seat => {
+    let x, y, show;
+    if (a && a.seat === seat) { const p = a.pts[a.i] || a.pts[a.i - 1] || a.from; x = p[0]; y = p[1]; show = true; }
+    else if (a && a.hole !== b.hole) { show = false; }
+    else { const bl = b.balls[seat]; x = bl.x; y = bl.y; show = !bl.in; }
+    if (show) ballAt(x, y, seat, seat !== me && me >= 0);
+  });
+  // aim
+  const A = GOLF.aim;
+  if (A && !a) {
+    const bl = b.balls[me], pw = Math.min(1, A.len / A.max);
+    const ang = Math.atan2(A.dy, A.dx);
+    c.setLineDash([3, 4]); c.strokeStyle = "rgba(255,255,255,.85)"; c.lineWidth = 1.6;
+    c.beginPath(); c.moveTo(bl.x, bl.y); c.lineTo(bl.x + Math.cos(ang) * (20 + pw * 90), bl.y + Math.sin(ang) * (20 + pw * 90)); c.stroke(); c.setLineDash([]);
+    c.fillStyle = `hsl(${120 - pw * 120},85%,55%)`; c.fillRect(8, g.GH - 14, (g.GW - 16) * pw, 6);
+    c.strokeStyle = "rgba(255,255,255,.4)"; c.strokeRect(8, g.GH - 14, g.GW - 16, 6);
+  }
+}
+function golfPointer(cv) {
+  const g = GAMES.golf;
+  const pos = e => { const r = cv.getBoundingClientRect(), sc = r.width / g.GW; return { x: (e.clientX - r.left) / sc, y: (e.clientY - r.top) / sc, sc }; };
+  let drag = null;
+  cv.onpointerdown = e => {
+    if (!S || S.phase !== "play" || GOLF.anim || pending || !waiting(mySeat())) return;
+    const p = pos(e); drag = { x0: p.x, y0: p.y }; cv.setPointerCapture(e.pointerId);
+    GOLF.aim = { dx: 0, dy: 0, len: 0, max: 110 }; drawGolf();
+  };
+  cv.onpointermove = e => {
+    if (!drag) return; const p = pos(e);
+    const dx = drag.x0 - p.x, dy = drag.y0 - p.y; // pull back to shoot forwards
+    GOLF.aim = { dx, dy, len: Math.sqrt(dx * dx + dy * dy), max: 110 }; drawGolf();
+  };
+  const up = () => {
+    if (!drag) return; drag = null;
+    const A = GOLF.aim; GOLF.aim = null;
+    if (!A || A.len < 6) { drawGolf(); return; }
+    const pw = Math.min(1, A.len / A.max) * g.MAXV, ang = Math.atan2(A.dy, A.dx);
+    myMove({ vx: Math.round(Math.cos(ang) * pw * 1000) / 1000, vy: Math.round(Math.sin(ang) * pw * 1000) / 1000 });
+  };
+  cv.onpointerup = up; cv.onpointercancel = () => { drag = null; GOLF.aim = null; drawGolf(); };
+}
+function boardGolf(c) {
+  const g = GAMES.golf, b = S.board, a = GOLF.anim, holeIx = a ? a.hole : b.hole, H = g.HOLES[holeIx];
+  const tot = sd => b.scores[sd].reduce((x, y) => x + y, 0);
+  const cell = (sd, i) => { const v = b.scores[sd][i]; if (v == null) return i === b.hole && S.phase === "play" ? `<td class="cur">${b.balls[sd].strokes || ""}</td>` : "<td></td>"; const par = g.HOLES[i].par; return `<td class="${v < par ? "under" : v > par ? "over" : ""}">${v}</td>`; };
+  const nm = sd => S.seats[sd] === ME.id ? "You" : esc(nameOf(S.seats[sd]));
+  const card = `<table class="golfcard"><tr><th></th>${g.HOLES.map((_, i) => `<th class="${i === b.hole ? "cur" : ""}">${i + 1}</th>`).join("")}<th>Tot</th></tr>
+    <tr class="par"><td>Par</td>${g.HOLES.map(h => `<td>${h.par}</td>`).join("")}<td>${g.HOLES.reduce((x, h) => x + h.par, 0)}</td></tr>
+    ${[0, 1].map(sd => `<tr class="p${sd}"><td><i></i>${nm(sd)}</td>${g.HOLES.map((_, i) => cell(sd, i)).join("")}<td><b>${tot(sd)}</b></td></tr>`).join("")}</table>`;
+  const bn = GOLF.banner && (GOLF.anim || Date.now() < GOLF.banner.until) && !a ? GOLF.banner : null;
+  const banner = bn ? `<div class="golfbanner"><b>Hole ${bn.hole + 1} done</b><span>${[0, 1].map(sd => `${nm(sd)} ${b.scores[sd][bn.hole] ?? "-"}`).join(" · ")}</span></div>` : "";
+  return `<div class="golfhead"><b>Hole ${holeIx + 1} of ${g.HOLES.length}: ${esc(H.name)}</b><span>Par ${H.par}</span></div>
+    <div class="golfwrap">${banner}<canvas id="golfcv"></canvas></div>
+    ${c.myTurn && !a ? `<p class="center small mut" style="margin:8px 0 0">Drag back from anywhere, like a catapult, then let go</p>` : ""}${card}`;
+}
 function deckPicker(sel, attr) {
   return `<div class="seg decks">${Object.values(GAMES.tt.DECKS).map(d => `<button class="${sel === d.id ? "on" : ""}" ${attr}="${d.id}">${d.icon} ${esc(d.name)}</button>`).join("")}</div>`;
 }
@@ -878,7 +1019,7 @@ function renderGame() {
     else if (myTurn) {
       cls = "me";
       const wiPick = S.game === "wi" && S.board.stage === "pick";
-      status = bsPlace ? "Place your fleet" : wiPick ? "Choose your mystery person" : S.game === "rps" ? "Pick your move" : S.game === "tt" ? "Pick a stat" : S.game === "wi" ? "Your turn: ask a question" : "Your turn";
+      status = bsPlace ? "Place your fleet" : wiPick ? "Choose your mystery person" : S.game === "rps" ? "Pick your move" : S.game === "tt" ? "Pick a stat" : S.game === "wi" ? "Your turn: ask a question" : S.game === "golf" ? "Your shot" : "Your turn";
       if (S.game === "dots" && S.lastBy === me && S.fx === "box") sub = "Box! Go again";
       if (S.game === "bs" && S.last && S.last.seat !== me) sub = S.last.sunk ? "They sank your ship!" : S.last.hit ? "They hit you!" : "They missed";
     } else if (S.turn < 0) {
@@ -886,6 +1027,7 @@ function renderGame() {
       status = wait.length ? `Waiting for ${wait.join(" and ")}…` : "…";
       if (bsPlace && me >= 0) sub = "They're placing their ships";
     } else if (S.seats[S.turn] === "cpu") status = "Computer is thinking…";
+    else if (S.game === "golf" && GOLF.anim) status = GOLF.anim.seat === mySeat() ? "Rolling…" : `${esc(nameOf(S.seats[GOLF.anim.seat]))} is putting…`;
     else status = S.game === "tt" ? `${esc(nameOf(S.seats[S.turn]))} is choosing…` : `${esc(nameOf(S.seats[S.turn]))}'s turn`;
     if (!myTurn && S.game === "bs" && S.last && S.last.seat === me) sub = S.last.sunk ? "You sank a ship! 🚢" : S.last.hit ? "Hit! 💥" : "Miss";
     if (S.game === "dots" && !myTurn && S.lastBy >= 0 && S.lastBy !== me && S.fx === "box" && me >= 0) sub = "They got a box and go again";
@@ -899,10 +1041,11 @@ function renderGame() {
     if (S.game === "rps") sub = `${S.board.score[0]} – ${S.board.score[1]}`;
     if (S.game === "bs") sub = "Every ship sunk";
     if (S.game === "wi" && S.board.reveal) sub = `${esc(nameOf(S.seats[0]))} was ${esc(GAMES.wi.PEOPLE[S.board.reveal[0]].name)}, ${esc(nameOf(S.seats[1]))} was ${esc(GAMES.wi.PEOPLE[S.board.reveal[1]].name)}`;
+    if (S.game === "golf") { const t = sd => S.board.scores[sd].reduce((x, y) => x + y, 0); sub = `Total strokes ${t(0)} – ${t(1)} (lowest wins)`; }
     if (S.game === "tt") sub = S.board.count[0] && S.board.count[1] ? `Most cards after ${GAMES.tt.MAX_ROUNDS} rounds: ${S.board.count[0]} – ${S.board.count[1]}` : "Won every card";
   }
 
-  const board = { ttt: boardTTT, c4: boardC4, dots: boardDots, bs: boardBS, rps: boardRPS, tt: boardTT, wi: boardWI }[S.game](c);
+  const board = { ttt: boardTTT, c4: boardC4, dots: boardDots, bs: boardBS, rps: boardRPS, tt: boardTT, wi: boardWI, golf: boardGolf }[S.game](c);
 
   let after = "";
   if (over) {
@@ -932,6 +1075,7 @@ function renderGame() {
   ${after}
   ${queue}
   <div class="foot">${MODE === "guest" ? `<span class="small mut" style="align-self:center">Game ${esc(S.room)}</span>` : ""}<button class="iconbtn" data-act="leave">Leave</button></div>`;
+  if (S.game === "golf") { const cv = document.getElementById("golfcv"); if (cv) { golfPointer(cv); drawGolf(); } }
 }
 
 // ===== TAPS =====
