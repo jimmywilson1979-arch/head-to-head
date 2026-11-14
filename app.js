@@ -42,6 +42,7 @@ let DRAFT = { k: "", ships: null };   // Battleships: fleet being placed
 let MYPICK = { k: "", v: null };      // Rock Paper Scissors: what a guest picked
 let REVEAL = { k: "", until: 0 };     // Rock Paper Scissors: hands shaking
 let TTSEEN = "";                      // Card Clash: last round result this phone has dismissed
+let WI = { k: "", pick: null, guessing: false, qOpen: false }; // Who Is It?: my draft pick, guess mode
 
 // ===== SOUND & BUZZ =====
 const Snd = {
@@ -227,6 +228,10 @@ function playFx(s) {
     case "sunk": Snd.sunk(); buzz([80, 50, 120]); break;
     case "pick": Snd.pick(); break;
     case "ready": Snd.ready(); break;
+    case "yes": Snd.tone(660, .1, "triangle", .12); Snd.tone(880, .14, "triangle", .12, .09); break;
+    case "no": Snd.tone(330, .12, "triangle", .12); Snd.tone(260, .16, "triangle", .12, .1); break;
+    case "wrong": Snd.lose(); break;
+    case "right": break;
     case "tt": {
       const w = s.board.last.w, me = s.seats.indexOf(ME.id);
       Snd.flip();
@@ -355,6 +360,7 @@ function myMove(mv) {
       render(); return;
     }
     if (mv && mv.ships) ls.set("h2h_mysec", { k: secKey(), ships: mv.ships });
+    if (mv && mv.pick != null) ls.set("h2h_mysec", { k: secKey(), pick: mv.pick });
     if (typeof mv === "string") MYPICK = { k: secKey() + ":" + S.board.hist.length, v: mv };
     sendMove(mv, n); Snd.pick(); render(); return;
   }
@@ -416,6 +422,10 @@ document.addEventListener("visibilitychange", () => {
 });
 
 // ===== DRAWING =====
+const SKIN = ["#f6d7c3", "#eec1a0", "#d9a07a", "#b67a52", "#8d5a3b", "#5f3b27"];
+const HAIR = { black: "#2b2b2b", brown: "#7a4a26", blonde: "#ecc75e", ginger: "#d9652b", grey: "#bdbdbd", none: "#7a4a26" };
+const EYE = { blue: "#3d8be0", brown: "#6b3d1e", green: "#3faa55" };
+const SHIRT = ["#6c8cff", "#ff8a5c", "#51e08a", "#c792ff", "#ffd23f", "#3ee6d6", "#ff7ac0", "#a5b4cc"];
 const svgX = (cls = "") => `<svg class="mark ${cls}" viewBox="0 0 100 100"><line x1="18" y1="18" x2="82" y2="82" stroke="var(--c)"/><line x1="82" y1="18" x2="18" y2="82" stroke="var(--c)"/></svg>`;
 const svgO = (cls = "") => `<svg class="mark ${cls}" viewBox="0 0 100 100"><circle cx="50" cy="50" r="33" stroke="var(--c)"/></svg>`;
 const disc = () => `<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" fill="var(--c)"/><circle cx="50" cy="50" r="30" fill="none" stroke="rgba(0,0,0,.18)" stroke-width="6"/></svg>`;
@@ -426,6 +436,7 @@ function markFor(game, seat) {
   if (game === "dots") return `<svg viewBox="0 0 100 100"><rect x="14" y="14" width="72" height="72" rx="8" fill="var(--c)" opacity=".85"/></svg>`;
   if (game === "bs") return `<svg viewBox="0 0 100 100"><path d="M10 58h80l-12 18H22z" fill="var(--c)"/><rect x="34" y="40" width="30" height="16" rx="3" fill="var(--c)"/><rect x="46" y="26" width="6" height="16" fill="var(--c)"/></svg>`;
   if (game === "rps") return `<span style="font-size:24px;line-height:1">${seat ? "✋" : "✊"}</span>`;
+  if (game === "wi") return `<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="42" fill="var(--c)"/><text x="50" y="68" text-anchor="middle" font-family="Fredoka" font-weight="700" font-size="52" fill="#0b1020">?</text></svg>`;
   if (game === "tt") return `<svg viewBox="0 0 100 100"><rect x="22" y="10" width="56" height="80" rx="9" fill="var(--c)"/><rect x="30" y="20" width="40" height="28" rx="5" fill="rgba(0,0,0,.25)"/><g fill="rgba(0,0,0,.25)"><rect x="30" y="56" width="40" height="5" rx="2"/><rect x="30" y="66" width="40" height="5" rx="2"/><rect x="30" y="76" width="28" height="5" rx="2"/></g></svg>`;
   return disc();
 }
@@ -435,6 +446,7 @@ const GAME_ICON = {
   dots: `<svg viewBox="0 0 120 120"><rect x="16" y="16" width="44" height="44" fill="#ff5d73" opacity=".35"/><rect x="60" y="60" width="44" height="44" fill="#ffd23f" opacity=".35"/><g stroke-width="6" stroke-linecap="round"><path d="M16 16H60V60H16Z" stroke="#ff5d73" fill="none"/><path d="M60 60H104V104H60Z" stroke="#ffd23f" fill="none"/><path d="M60 16H104" stroke="#ff5d73"/><path d="M16 60V104" stroke="#ffd23f"/></g>${[16, 60, 104].map(y => [16, 60, 104].map(x => `<circle cx="${x}" cy="${y}" r="7" fill="#eef2ff"/>`).join("")).join("")}</svg>`,
   bs: `<svg viewBox="0 0 120 120"><rect x="6" y="6" width="108" height="108" rx="12" fill="#12306b"/><g stroke="#2a4f9a" stroke-width="2">${[1, 2, 3, 4].map(k => `<line x1="${6 + k * 21.6}" y1="6" x2="${6 + k * 21.6}" y2="114"/><line x1="6" y1="${6 + k * 21.6}" x2="114" y2="${6 + k * 21.6}"/>`).join("")}</g><rect x="12" y="34" width="62" height="16" rx="8" fill="#9aa6c8"/><rect x="77" y="56" width="16" height="40" rx="8" fill="#9aa6c8"/><circle cx="41" cy="42" r="9" fill="#ff5d73"/><circle cx="60" cy="85" r="4" fill="#eef2ff"/><circle cx="25" cy="98" r="4" fill="#eef2ff"/></svg>`,
   rps: `<div style="font-size:30px;line-height:54px;letter-spacing:-2px">✊✋✌️</div>`,
+  wi: `<div class="wiico">${[3, 14, 18].map(i => `<i>${faceSVG(i)}</i>`).join("")}</div>`,
   tt: `<div class="ttico"><i>🦁</i><i>🐘</i></div>`,
 };
 
@@ -751,6 +763,82 @@ function boardTT(c) {
   const info = [b.pot ? `${b.pot} card${b.pot > 1 ? "s" : ""} in the middle` : "", S.phase === "play" ? `Round ${b.rounds + (ttRevealPending() ? 0 : 1)} of ${GAMES.tt.MAX_ROUNDS}` : ""].filter(Boolean).join(" · ");
   return h + `<div class="ttinfo">${info}</div><p class="center small mut" style="margin-top:6px">${d.icon} ${esc(d.name)}: ${esc(d.note)}</p>`;
 }
+function faceSVG(i) {
+  const p = GAMES.wi.PEOPLE[i], has = k => p.x.includes(k), sk = SKIN[p.skin], hc = HAIR[p.hair];
+  const darker = p.skin >= 4 ? "rgba(0,0,0,.35)" : "rgba(120,60,40,.35)";
+  let back = "", top = "", hat = "", extra = "";
+  if (p.style === "long") back = `<path d="M22 46 Q20 18 50 16 Q80 18 78 46 L80 92 Q66 98 50 98 Q34 98 20 92 Z" fill="${hc}"/>`;
+  if (p.style === "short") top = `<path d="M24 46 Q22 16 50 15 Q78 16 76 46 Q72 30 62 28 Q50 34 36 28 Q28 32 24 46Z" fill="${hc}"/>`;
+  if (p.style === "long") top = `<path d="M24 50 Q22 16 50 15 Q78 16 76 50 Q74 30 58 27 Q44 32 30 30 Q26 36 24 50Z" fill="${hc}"/>`;
+  if (p.style === "curly") top = [[28, 34], [36, 24], [47, 19], [58, 20], [68, 25], [74, 35], [24, 44], [76, 44]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="10" fill="${hc}"/>`).join("");
+  if (p.style === "bun") top = `<circle cx="50" cy="12" r="10" fill="${hc}"/><path d="M24 46 Q22 18 50 17 Q78 18 76 46 Q70 28 50 26 Q30 28 24 46Z" fill="${hc}"/>`;
+  if (p.style === "bald") top = `<ellipse cx="42" cy="28" rx="7" ry="3" fill="rgba(255,255,255,.35)"/>`;
+  if (has("h")) hat = `<path d="M23 38 Q24 8 50 8 Q76 8 77 38 Z" fill="#e2524f"/><rect x="21" y="32" width="58" height="10" rx="5" fill="#f2f2f2"/><circle cx="50" cy="6" r="6" fill="#f2f2f2"/>`;
+  if (has("c")) hat = `<path d="M24 36 Q24 12 50 12 Q76 12 76 36 Z" fill="#2f6fe0"/><path d="M50 34 L92 36 Q90 42 74 40 L50 38Z" fill="#2557b8"/><circle cx="50" cy="12" r="3" fill="#2557b8"/>`;
+  const iris = EYE[p.eyes];
+  const eyes = `<ellipse cx="40" cy="52" rx="6" ry="5" fill="#fff"/><ellipse cx="60" cy="52" rx="6" ry="5" fill="#fff"/><circle cx="40" cy="52" r="3.6" fill="${iris}"/><circle cx="60" cy="52" r="3.6" fill="${iris}"/><circle cx="40" cy="52" r="1.6" fill="#111"/><circle cx="60" cy="52" r="1.6" fill="#111"/>`;
+  const brows = `<path d="M33 44 Q40 40 46 44" stroke="${p.style === "bald" ? "#5a3a24" : hc}" stroke-width="2.6" fill="none" stroke-linecap="round"/><path d="M54 44 Q60 40 67 44" stroke="${p.style === "bald" ? "#5a3a24" : hc}" stroke-width="2.6" fill="none" stroke-linecap="round"/>`;
+  const glasses = has("g") ? `<g stroke="#222" stroke-width="2.2" fill="rgba(255,255,255,.12)"><circle cx="40" cy="52" r="9"/><circle cx="60" cy="52" r="9"/><path d="M49 52 L51 52" fill="none"/></g>` : "";
+  const mouth = has("s") ? `<path d="M40 70 Q50 80 60 70 Z" fill="#fff" stroke="#7a2e2e" stroke-width="2"/>` : `<path d="M41 71 Q50 77 59 71" stroke="#7a2e2e" stroke-width="2.4" fill="none" stroke-linecap="round"/>`;
+  const fh = p.style === "bald" ? "#6b4a30" : hc;
+  const beard = has("b") ? `<path d="M25 58 Q26 92 50 94 Q74 92 75 58 Q70 74 62 76 Q50 80 38 76 Q30 74 25 58Z" fill="${fh}"/>` : "";
+  const tache = has("m") ? `<path d="M38 67 Q44 62 50 66 Q56 62 62 67 Q56 69 50 68 Q44 69 38 67Z" fill="${fh}"/>` : "";
+  const cheeks = has("r") ? `<circle cx="33" cy="63" r="5" fill="#ff7b8a" opacity=".45"/><circle cx="67" cy="63" r="5" fill="#ff7b8a" opacity=".45"/>` : "";
+  const freck = has("f") ? [[34, 60], [37, 63], [31, 63], [66, 60], [63, 63], [69, 63]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="1.1" fill="#9a5a34"/>`).join("") : "";
+  const ears = `<ellipse cx="24" cy="55" rx="4" ry="6" fill="${sk}"/><ellipse cx="76" cy="55" rx="4" ry="6" fill="${sk}"/>` + (has("e") ? `<circle cx="24" cy="63" r="2.6" fill="#ffd23f" stroke="#c99a10"/><circle cx="76" cy="63" r="2.6" fill="#ffd23f" stroke="#c99a10"/>` : "");
+  extra = `<path d="M47 60 Q50 64 53 60" stroke="${darker}" stroke-width="2" fill="none" stroke-linecap="round"/>`;
+  return `<svg viewBox="0 0 100 110" class="face">${back}<path d="M16 110 Q18 88 50 88 Q82 88 84 110Z" fill="${SHIRT[i % SHIRT.length]}"/><rect x="43" y="78" width="14" height="12" fill="${sk}"/>${ears}<ellipse cx="50" cy="54" rx="26" ry="29" fill="${sk}"/>${beard}${top}${hat}${brows}${eyes}${glasses}${cheeks}${freck}${extra}${tache}${mouth}</svg>`;
+}
+function wiCard(i, o = {}) {
+  return `<${o.btn ? "button" : "div"} class="wic ${o.down ? "down" : ""} ${o.cls || ""}" ${o.attr || ""}>${faceSVG(i)}<span>${esc(GAMES.wi.PEOPLE[i].name)}</span></${o.btn ? "button" : "div"}>`;
+}
+function wiSecret() { // which person this phone is hiding
+  const me = mySeat(); if (me < 0) return null;
+  if (MODE !== "guest") return S.sec ? S.sec[me] : null;
+  const v = ls.get("h2h_mysec", null);
+  if (v && v.k === secKey()) return v.pick;
+  return S.board.reveal ? S.board.reveal[me] : null;
+}
+function boardWI(c) {
+  const b = S.board, me = c.me, g = GAMES.wi, P = g.PEOPLE, Q = g.QUESTIONS;
+  if (WI.k !== secKey()) WI = { k: secKey(), pick: Math.floor(Math.random() * P.length), guessing: false, qOpen: false };
+  const nm = seat => S.seats[seat] === ME.id ? "You" : esc(nameOf(S.seats[seat]));
+  if (me >= 0 && b.stage === "pick") {
+    if (!b.ready[me] && !(pending && pending.mv && pending.mv.pick != null)) {
+      return `<div class="wipick">${wiCard(WI.pick, { cls: "big" })}<div><p class="small mut" style="margin:0 0 8px">This is your mystery person. ${esc(nameOf(S.seats[1 - me]))} has to work out who it is.</p><button class="btn alt" data-act="wishuffle">🔀 Someone else</button><div class="gap"></div><button class="btn green" data-act="wiready">✅ Ready</button></div></div>`;
+    }
+    const mine = wiSecret() ?? (pending && pending.mv && pending.mv.pick);
+    return `<div class="wipick">${mine != null ? wiCard(mine, { cls: "big" }) : ""}<p class="mut">Ready! Keep it secret…</p></div>`;
+  }
+  const view = me >= 0 ? me : S.turn >= 0 ? S.turn : 0;
+  const down = b.down[view], left = down.filter(x => !x).length;
+  const last = b.log[b.log.length - 1];
+  let lastLine = "";
+  if (last) {
+    if (last.q != null) lastLine = `<b>${nm(last.seat)}</b> asked: ${esc(Q[last.q][0])} <span class="ans ${last.a ? "y" : "n"}">${last.a ? "Yes" : "No"}</span>`;
+    else lastLine = `<b>${nm(last.seat)}</b> guessed <b>${esc(P[last.guess].name)}</b>: <span class="ans ${last.ok ? "y" : "n"}">${last.ok ? "Right!" : "Wrong"}</span>`;
+  }
+  const mine = wiSecret();
+  const canAct = c.myTurn && !pending;
+  const grid = `<div class="wigrid ${WI.guessing && canAct ? "guessing" : ""}">${P.map((_, i) => {
+    const isDown = down[i], canGuess = WI.guessing && canAct && !isDown;
+    const rev = b.reveal && b.reveal[1 - view] === i;
+    return wiCard(i, { btn: canGuess, down: isDown && !rev, cls: (rev ? "rev " : "") + (canGuess ? "can" : ""), attr: canGuess ? `data-wiguess="${i}"` : "" });
+  }).join("")}</div>`;
+  let controls = "";
+  if (S.phase === "play" && canAct) {
+    if (WI.guessing) controls = `<p class="center small" style="margin:8px 0">Tap the person you think it is. Wrong guess and your go ends.</p><button class="btn alt" data-act="wiguessoff">Back to questions</button>`;
+    else {
+      const asked = new Set(b.log.filter(l => l.seat === me && l.q != null).map(l => l.q));
+      controls = `<div class="wiqs">${Q.map(([t], qi) => `<button data-wiask="${qi}" class="${asked.has(qi) ? "asked" : ""}">${esc(t)}</button>`).join("")}</div>
+        <button class="btn" data-act="wiguesson" style="margin-top:12px">🎯 I know who it is!</button>`;
+    }
+  }
+  const hist = b.log.length > 1 ? `<details class="wihist"><summary>All questions (${b.log.length})</summary>${b.log.slice().reverse().map(l => `<div>${l.q != null ? `${nm(l.seat)}: ${esc(Q[l.q][0])} <span class="ans ${l.a ? "y" : "n"}">${l.a ? "Yes" : "No"}</span>` : `${nm(l.seat)} guessed ${esc(P[l.guess].name)}: <span class="ans ${l.ok ? "y" : "n"}">${l.ok ? "Right" : "Wrong"}</span>`}</div>`).join("")}</details>` : "";
+  return `${lastLine ? `<div class="wilast">${lastLine}</div>` : ""}
+    <div class="wiinfo">${me >= 0 && mine != null ? `<span class="wime">${faceSVG(mine)}<span>You are <b>${esc(P[mine].name)}</b></span></span>` : ""}<span class="mut small">${me >= 0 ? "Your board" : nm(view) + "'s board"}: ${left} left${me >= 0 ? ` · ${esc(nameOf(S.seats[1 - me]))}: ${b.down[1 - me].filter(x => !x).length} left` : ""}</span></div>
+    ${controls}${grid}${hist}`;
+}
 function deckPicker(sel, attr) {
   return `<div class="seg decks">${Object.values(GAMES.tt.DECKS).map(d => `<button class="${sel === d.id ? "on" : ""}" ${attr}="${d.id}">${d.icon} ${esc(d.name)}</button>`).join("")}</div>`;
 }
@@ -789,7 +877,8 @@ function renderGame() {
     }
     else if (myTurn) {
       cls = "me";
-      status = bsPlace ? "Place your fleet" : S.game === "rps" ? "Pick your move" : S.game === "tt" ? "Pick a stat" : "Your turn";
+      const wiPick = S.game === "wi" && S.board.stage === "pick";
+      status = bsPlace ? "Place your fleet" : wiPick ? "Choose your mystery person" : S.game === "rps" ? "Pick your move" : S.game === "tt" ? "Pick a stat" : S.game === "wi" ? "Your turn: ask a question" : "Your turn";
       if (S.game === "dots" && S.lastBy === me && S.fx === "box") sub = "Box! Go again";
       if (S.game === "bs" && S.last && S.last.seat !== me) sub = S.last.sunk ? "They sank your ship!" : S.last.hit ? "They hit you!" : "They missed";
     } else if (S.turn < 0) {
@@ -809,10 +898,11 @@ function renderGame() {
     if (S.game === "dots") sub = `Boxes ${S.board.score[0]} – ${S.board.score[1]}`;
     if (S.game === "rps") sub = `${S.board.score[0]} – ${S.board.score[1]}`;
     if (S.game === "bs") sub = "Every ship sunk";
+    if (S.game === "wi" && S.board.reveal) sub = `${esc(nameOf(S.seats[0]))} was ${esc(GAMES.wi.PEOPLE[S.board.reveal[0]].name)}, ${esc(nameOf(S.seats[1]))} was ${esc(GAMES.wi.PEOPLE[S.board.reveal[1]].name)}`;
     if (S.game === "tt") sub = S.board.count[0] && S.board.count[1] ? `Most cards after ${GAMES.tt.MAX_ROUNDS} rounds: ${S.board.count[0]} – ${S.board.count[1]}` : "Won every card";
   }
 
-  const board = { ttt: boardTTT, c4: boardC4, dots: boardDots, bs: boardBS, rps: boardRPS, tt: boardTT }[S.game](c);
+  const board = { ttt: boardTTT, c4: boardC4, dots: boardDots, bs: boardBS, rps: boardRPS, tt: boardTT, wi: boardWI }[S.game](c);
 
   let after = "";
   if (over) {
@@ -846,13 +936,15 @@ function renderGame() {
 
 // ===== TAPS =====
 app.addEventListener("click", e => {
-  const el = e.target.closest("[data-act],[data-mv],[data-fire],[data-rps],[data-tt],[data-deck],[data-setdeck],[data-pickgame],[data-setgame],[data-level],[data-setlevel],[data-kick]");
+  const el = e.target.closest("[data-act],[data-mv],[data-fire],[data-rps],[data-tt],[data-wiask],[data-wiguess],[data-deck],[data-setdeck],[data-pickgame],[data-setgame],[data-level],[data-setlevel],[data-kick]");
   if (!el) return;
   const d = el.dataset;
   if (d.mv != null) return myMove(Number(d.mv));
   if (d.fire != null) return myMove({ fire: Number(d.fire) });
   if (d.rps) return myMove(d.rps);
   if (d.tt != null) return myMove(Number(d.tt));
+  if (d.wiask != null) { WI.guessing = false; return myMove({ ask: Number(d.wiask) }); }
+  if (d.wiguess != null) { WI.guessing = false; return myMove({ guess: Number(d.wiguess) }); }
   if (d.deck) { PREF.deck = d.deck; savePref(); return renderHome(); }
   if (d.setdeck) { if (MODE === "host" || MODE === "cpu") { PREF.deck = d.setdeck; savePref(); S.opts = Object.assign({}, S.opts, { deck: d.setdeck }); commit(); } return; }
   if (d.pickgame) { PREF.game = d.pickgame; savePref(); return renderHome(); }
@@ -888,6 +980,10 @@ app.addEventListener("click", e => {
     case "shuffle": DRAFT = { k: secKey(), ships: GAMES.bs.randomFleet() }; Snd.pick(); return render();
     case "ready": return myMove({ ships: draftFleet() });
     case "ttnext": TTSEEN = ttKey(); render(); return maybeCPU();
+    case "wishuffle": { const n = GAMES.wi.PEOPLE.length; let x; do { x = Math.floor(Math.random() * n); } while (x === WI.pick); WI.pick = x; Snd.pick(); return render(); }
+    case "wiready": return myMove({ pick: WI.pick });
+    case "wiguesson": WI.guessing = true; return render();
+    case "wiguessoff": WI.guessing = false; return render();
   }
 });
 app.addEventListener("keydown", e => {

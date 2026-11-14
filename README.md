@@ -32,9 +32,11 @@ Hard is unbeatable at Noughts & Crosses, very strong at Connect 4 and Dots & Box
 - If the host's page reloads, **Resume** on the home page brings the game back for everyone.
 - Testing on one device: add `?local` to the link and open two tabs (no internet needed).
 
+- **Who Is It?** (Guess Who style) – 24 original cartoon people. Each player picks a secret person, then you take turns asking yes/no questions; the app answers and flips down everyone who doesn't match. Tap "I know who it is!" to guess – a wrong guess ends your go.
+
 ## Coming next
 - More **Card Clash** themes (see ideas list)
-- **Guess Who** style – ask yes/no questions to find their character (family-faces edition)
+- **Who Is It? family edition** – your own family photos instead of cartoon faces
 - **Mini golf** – take turns putting on your own phone, scores shared
 - **Air hockey** – each phone is one end of the table
 

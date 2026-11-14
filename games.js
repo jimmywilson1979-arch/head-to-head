@@ -352,6 +352,49 @@
     return pick;
   }
 
+
+  // ===== WHO IS IT? (Guess Who style) =====
+  // [name, skin 0-5, hair colour, hair style, eye colour, extras] extras: g glasses, h beanie, c cap, b beard, m moustache, e earrings, s big smile, r rosy cheeks, f freckles
+  const PEOPLE = [
+    ["Alfie", 1, "brown", "short", "blue", "cs"], ["Bella", 0, "blonde", "long", "blue", "er"], ["Carys", 2, "black", "curly", "brown", "ges"],
+    ["Dai", 0, "grey", "short", "green", "bmg"], ["Ella", 3, "black", "bun", "brown", "es"], ["Finn", 0, "ginger", "short", "green", "fs"],
+    ["Gwen", 1, "ginger", "long", "blue", "hfr"], ["Hassan", 3, "black", "short", "brown", "b"], ["Isla", 0, "brown", "long", "green", "g"],
+    ["Jack", 1, "blonde", "short", "blue", "h"], ["Kemi", 5, "black", "curly", "brown", "es"], ["Leo", 2, "brown", "curly", "brown", "cm"],
+    ["Maya", 4, "black", "long", "brown", "he"], ["Nia", 5, "brown", "bun", "green", "gs"], ["Owen", 0, "none", "bald", "blue", "bg"],
+    ["Priya", 3, "black", "long", "brown", "eg"], ["Rhys", 1, "black", "short", "blue", "ms"], ["Sophie", 0, "blonde", "bun", "green", "frs"],
+    ["Theo", 2, "ginger", "curly", "blue", "fc"], ["Uma", 4, "grey", "bun", "brown", "ge"], ["Vic", 1, "none", "bald", "brown", "mrs"],
+    ["Will", 0, "blonde", "curly", "green", "b"], ["Zara", 4, "brown", "long", "blue", "ce"], ["Mo", 5, "grey", "short", "brown", "bmh"],
+  ].map(([name, skin, hair, style, eyes, x]) => ({ name, skin, hair, style, eyes, x }));
+  const has = (p, k) => p.x.includes(k);
+  const QUESTIONS = [
+    ["Do they wear glasses?", p => has(p, "g")], ["Are they wearing a hat?", p => has(p, "h") || has(p, "c")],
+    ["Do they have a beard?", p => has(p, "b")], ["Do they have a moustache?", p => has(p, "m")],
+    ["Are they bald?", p => p.style === "bald"], ["Do they have black hair?", p => p.hair === "black"],
+    ["Do they have brown hair?", p => p.hair === "brown"], ["Do they have blonde hair?", p => p.hair === "blonde"],
+    ["Do they have ginger hair?", p => p.hair === "ginger"], ["Do they have grey hair?", p => p.hair === "grey"],
+    ["Do they have long hair?", p => p.style === "long"], ["Do they have curly hair?", p => p.style === "curly"],
+    ["Is their hair in a bun?", p => p.style === "bun"], ["Do they have blue eyes?", p => p.eyes === "blue"],
+    ["Do they have brown eyes?", p => p.eyes === "brown"], ["Do they have green eyes?", p => p.eyes === "green"],
+    ["Are they wearing earrings?", p => has(p, "e")], ["Are they showing their teeth?", p => has(p, "s")],
+    ["Do they have rosy cheeks?", p => has(p, "r")], ["Do they have freckles?", p => has(p, "f")],
+  ];
+  function wiAI(S, seat, level) {
+    const b = S.board;
+    if (b.stage === "pick") return { pick: Math.floor(Math.random() * PEOPLE.length) };
+    const up = PEOPLE.map((_, i) => i).filter(i => !b.down[seat][i]);
+    if (up.length === 1) return { guess: up[0] };
+    if (level === "easy" && up.length <= 3 && Math.random() < 0.5) return { guess: rnd(up) };
+    const asked = new Set(b.log.filter(l => l.seat === seat && l.q != null).map(l => l.q));
+    const split = QUESTIONS.map(([, f], qi) => { const yes = up.filter(i => f(PEOPLE[i])).length; return { qi, yes, no: up.length - yes }; })
+      .filter(o => !asked.has(o.qi));
+    const useful = split.filter(o => o.yes && o.no);
+    if (!useful.length) return { guess: rnd(up) };
+    if (level === "easy") return { ask: (Math.random() < 0.3 && split.length ? rnd(split) : rnd(useful)).qi };
+    if (level === "medium") return { ask: rnd(useful).qi };
+    const best = Math.min(...useful.map(o => Math.abs(o.yes - o.no)));
+    return { ask: rnd(useful.filter(o => Math.abs(o.yes - o.no) === best)).qi };
+  }
+
   // ===== THE GAME LIST =====
   // init(S): set S.board (everyone sees), S.sec (host only), S.turn (seat, or -1 when both act at once)
   // waiting(S, seat): does this seat need to act now?
@@ -457,6 +500,40 @@
       },
       ai: ttAI,
       DECKS,
+    },
+    wi: {
+      id: "wi", name: "Who Is It?", local: false, PEOPLE, QUESTIONS,
+      init(S) {
+        S.board = { stage: "pick", ready: [false, false], down: [Array(PEOPLE.length).fill(false), Array(PEOPLE.length).fill(false)], log: [], reveal: null };
+        S.sec = { 0: null, 1: null }; S.turn = -1;
+      },
+      waiting: (S, seat) => S.board.stage === "pick" ? !S.board.ready[seat] : S.turn === seat,
+      move(S, seat, mv) {
+        const b = S.board; if (!mv || typeof mv !== "object") return false;
+        if (b.stage === "pick") {
+          if (b.ready[seat] || !Number.isInteger(mv.pick) || mv.pick < 0 || mv.pick >= PEOPLE.length) return false;
+          S.sec[seat] = mv.pick; b.ready[seat] = true; S.last = null;
+          if (b.ready[0] && b.ready[1]) { b.stage = "play"; S.turn = S.starter; }
+          return "ready";
+        }
+        if (S.turn !== seat) return false;
+        const target = PEOPLE[S.sec[1 - seat]];
+        if (Number.isInteger(mv.ask) && QUESTIONS[mv.ask]) {
+          const a = !!QUESTIONS[mv.ask][1](target);
+          PEOPLE.forEach((p, i) => { if (!!QUESTIONS[mv.ask][1](p) !== a) b.down[seat][i] = true; });
+          b.log.push({ seat, q: mv.ask, a }); S.last = b.log.length; S.turn = 1 - seat;
+          return a ? "yes" : "no";
+        }
+        if (Number.isInteger(mv.guess) && mv.guess >= 0 && mv.guess < PEOPLE.length && !b.down[seat][mv.guess]) {
+          const ok = mv.guess === S.sec[1 - seat];
+          b.log.push({ seat, guess: mv.guess, ok }); S.last = b.log.length;
+          if (ok) { S.result = { w: seat, line: [] }; b.reveal = { 0: S.sec[0], 1: S.sec[1] }; }
+          else { b.down[seat][mv.guess] = true; S.turn = 1 - seat; }
+          return ok ? "right" : "wrong";
+        }
+        return false;
+      },
+      ai: wiAI,
     },
     rps: {
       id: "rps", name: "Rock Paper Scissors", local: false, TARGET: 3,
