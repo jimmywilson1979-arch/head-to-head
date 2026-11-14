@@ -316,4 +316,4 @@ button.ttrow:active { transform: translateY(2px); box-shadow: inset 0 0 0 3px va
 .ttpic.isflag img { width: 62%; aspect-ratio: 4/3; object-fit: cover; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,.25), 0 0 0 1px rgba(0,0,0,.1); display: block; }
 .ttcard.mini .ttpic.isflag { padding: 8px 0; }
 .ttpic.isart { padding: 0; overflow: hidden; line-height: 0; background: #dfe8f7; }
-.ttpic.isart img { width: 100%; aspect-ratio: 4/3; object-fit: cover; display: block; }
+.ttpic.isart img { width: 100%; aspect-ratio: 5/4; object-fit: cover; object-position: 50% 22%; display: block; }

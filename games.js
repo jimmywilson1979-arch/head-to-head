@@ -237,6 +237,8 @@
 
   // ===== CARD CLASH (Top Trumps style) =====
   // Each deck: stats (higher always wins) and cards [name, picture, ...values in stat order]. Facts are rough figures for a big adult.
+  const slug = t => String(t).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const art = folder => (i, c) => `img/cards/${folder}/${slug(c[0])}.webp`; // storybook pictures made in Gemini
   const DECKS = {
     animals: {
       id: "animals", name: "Animals", icon: "🦁",
@@ -258,7 +260,7 @@
     },
     dinosaurs: {
       id: "dinosaurs", name: "Dinosaurs", icon: "🦖",
-      note: "Scientists' best estimates. They change as new fossils are found. 🦖 meat-eaters, 🦕 plant-eaters.",
+      note: "Scientists' best estimates. They change as new fossils are found.", img: art("dinosaurs"),
       stats: [{ l: "Length", u: "m" }, { l: "Weight", u: "kg" }, { l: "Top speed", u: "mph" }, { l: "Lived", u: "mya" }, { l: "Fierceness", u: "/10" }],
       cards: [
         ["Tyrannosaurus rex", "🦖", 12.3, 8400, 17, 68, 10], ["Spinosaurus", "🦖", 15, 7400, 15, 97, 9], ["Giganotosaurus", "🦖", 13, 8000, 20, 98, 10],
