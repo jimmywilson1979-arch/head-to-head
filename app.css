@@ -281,6 +281,10 @@ img.face { aspect-ratio: 1; object-fit: cover; border-radius: 7px; background: #
 .golfbanner .btn { padding: 12px; font-size: 16px; }
 .golfmsg { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); z-index: 2; padding: 9px 14px; border-radius: 14px; font-weight: 900; font-size: 15px; width: max-content; max-width: 90%; text-align: center; animation: popH .3s ease-out; box-shadow: 0 6px 20px rgba(0,0,0,.5); }
 .golfmsg.good { background: #1f6e44; color: #d6ffe7; } .golfmsg.bad { background: #6e1f2c; color: #ffd6dd; }
+.golfctl { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.golfctl .btn { flex: 1; padding: 13px 8px; font-size: 17px; margin: 0; }
+.golfctl .btn[disabled] { opacity: .4; }
+.golfctl span { font-weight: 800; color: var(--mut); white-space: nowrap; } .golfctl span b { color: var(--fg, #fff); font-size: 18px; }
 .golfcard { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; background: var(--card); border-radius: 12px; overflow: hidden; }
 .golfcard th, .golfcard td { padding: 6px 2px; text-align: center; border-bottom: 1px solid var(--line); }
 .golfcard td:first-child { text-align: left; padding-left: 8px; white-space: nowrap; max-width: 80px; overflow: hidden; text-overflow: ellipsis; }

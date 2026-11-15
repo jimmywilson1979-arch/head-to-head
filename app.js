@@ -45,7 +45,7 @@ let MYPICK = { k: "", v: null };      // Rock Paper Scissors: what a guest picke
 let REVEAL = { k: "", until: 0 };     // Rock Paper Scissors: hands shaking
 let TTSEEN = "";                      // Card Clash: last round result this phone has dismissed
 let WI = { k: "", pick: null, guessing: false, qOpen: false }; // Who Is It?: my draft pick, guess mode
-let GOLF = { anim: null, seen: "", aim: null, card: null, msg: null };   // Mini Golf: ball animation, my aim while dragging
+let GOLF = { anim: null, seen: "", aim: null, aimKey: "", drag: null, held: false, card: null, msg: null };   // Mini Golf: ball animation, my aim while dragging
 let HKR = null;                                                  // Air Hockey: the live table on this phone
 const FAST = { pcs: {}, dcs: {} };                               // direct phone-to-phone links (WebRTC)
 
@@ -539,6 +539,7 @@ async function shareInvite() {
 
 // ===== SCREENS =====
 function render() {
+  if (GOLF.drag && S && S.game === "golf") { GOLF.held = true; return; } // don't swap the course out from under a finger mid-aim; catch up on release
   const f = document.activeElement;
   if (f && f.id && MODE === "home" && app.querySelector("#" + f.id)) return; // don't wipe what they're typing
   if (MODE !== "host" && MODE !== "guest" && MODE !== "cpu") { app.dataset.hk = ""; hkStop(); }
@@ -1085,7 +1086,7 @@ function drawGolf() {
     ballAt(x, y, seat, seat !== me && me >= 0);
   });
   // aim
-  const A = GOLF.aim;
+  const A = GOLF.aim && GOLF.aimKey === golfAimKey() && golfCanAim() ? GOLF.aim : null;
   if (A && !a) {
     const bl = b.balls[me], pw = Math.min(1, A.len / A.max);
     const ang = Math.atan2(A.dy, A.dx);
@@ -1095,28 +1096,46 @@ function drawGolf() {
     c.strokeStyle = "rgba(255,255,255,.4)"; c.strokeRect(8, g.GH - 14, g.GW - 16, 6);
   }
 }
+function golfCanAim() { return !!S && S.phase === "play" && S.game === "golf" && !GOLF.anim && !pending && !GOLF.card && waiting(mySeat()); }
+function golfAimKey() { return S && S.board ? S.board.hole + "|" + (S.board.balls[mySeat()] || {}).strokes : ""; }
+// Aim: drag back like a catapult to set direction and power. Letting go keeps the aim on screen;
+// drag again to fine-tune it, then press Hit. The drag lives in GOLF (not on the canvas), so a redraw can't lose it.
 function golfPointer(cv) {
   const g = GAMES.golf;
-  const pos = e => { const r = cv.getBoundingClientRect(), sc = r.width / g.GW; return { x: (e.clientX - r.left) / sc, y: (e.clientY - r.top) / sc, sc }; };
-  let drag = null;
+  const pos = e => { const c = document.getElementById("golfcv") || cv, r = c.getBoundingClientRect(), sc = r.width / g.GW; return { x: (e.clientX - r.left) / sc, y: (e.clientY - r.top) / sc }; };
+  const end = () => { if (!GOLF.drag) return; GOLF.drag = null; if (GOLF.aim && GOLF.aim.len < 4) GOLF.aim = null; if (GOLF.held) { GOLF.held = false; render(); } else { drawGolf(); golfHitUI(); } };
   cv.onpointerdown = e => {
-    if (!S || S.phase !== "play" || GOLF.anim || pending || !waiting(mySeat())) return;
-    const p = pos(e); drag = { x0: p.x, y0: p.y }; cv.setPointerCapture(e.pointerId);
-    GOLF.aim = { dx: 0, dy: 0, len: 0, max: 110 }; drawGolf();
+    if (!golfCanAim()) return;
+    const p = pos(e), base = GOLF.aim && GOLF.aimKey === golfAimKey() ? GOLF.aim : { dx: 0, dy: 0 };
+    GOLF.drag = { id: e.pointerId, x0: p.x, y0: p.y, bx: base.dx, by: base.dy }; GOLF.aimKey = golfAimKey();
+    try { cv.setPointerCapture(e.pointerId); } catch (x) { }
+    e.preventDefault();
   };
-  cv.onpointermove = e => {
-    if (!drag) return; const p = pos(e);
-    const dx = drag.x0 - p.x, dy = drag.y0 - p.y; // pull back to shoot forwards
-    GOLF.aim = { dx, dy, len: Math.sqrt(dx * dx + dy * dy), max: 110 }; drawGolf();
-  };
-  const up = () => {
-    if (!drag) return; drag = null;
-    const A = GOLF.aim; GOLF.aim = null;
-    if (!A || A.len < 6) { drawGolf(); return; }
-    const pw = Math.min(1, A.len / A.max) * g.MAXV, ang = Math.atan2(A.dy, A.dx);
-    myMove({ vx: Math.round(Math.cos(ang) * pw * 1000) / 1000, vy: Math.round(Math.sin(ang) * pw * 1000) / 1000 });
-  };
-  cv.onpointerup = up; cv.onpointercancel = () => { drag = null; GOLF.aim = null; drawGolf(); };
+  if (!golfPointer.win) { // once: follow the finger even if it leaves the course or the canvas is redrawn
+    golfPointer.win = true;
+    window.addEventListener("pointermove", e => {
+      const d = GOLF.drag; if (!d || e.pointerId !== d.id) return;
+      const p = pos(e), max = 110;
+      let dx = d.bx + (d.x0 - p.x), dy = d.by + (d.y0 - p.y), len = Math.sqrt(dx * dx + dy * dy);
+      if (len > max) { dx *= max / len; dy *= max / len; len = max; }
+      GOLF.aim = { dx, dy, len, max }; drawGolf(); golfHitUI();
+    });
+    ["pointerup", "pointercancel"].forEach(t => window.addEventListener(t, e => { if (GOLF.drag && e.pointerId === GOLF.drag.id) end(); }));
+    window.addEventListener("blur", end);
+  }
+  cv.onlostpointercapture = () => setTimeout(() => { if (GOLF.drag && !document.getElementById("golfcv")) end(); }, 0);
+}
+function golfHitUI() {
+  const btn = document.getElementById("golfhit"), lab = document.getElementById("golfpow"); if (!btn) return;
+  const A = GOLF.aim && GOLF.aimKey === golfAimKey() ? GOLF.aim : null, ok = !!A && A.len >= 4 && golfCanAim();
+  btn.disabled = !ok; if (lab) lab.textContent = A ? Math.round(Math.min(1, A.len / A.max) * 100) + "%" : "–";
+}
+function golfHit() {
+  const g = GAMES.golf, A = GOLF.aim;
+  if (!A || A.len < 4 || GOLF.aimKey !== golfAimKey() || !golfCanAim()) return;
+  GOLF.aim = null; GOLF.drag = null;
+  const pw = Math.min(1, A.len / A.max) * g.MAXV, ang = Math.atan2(A.dy, A.dx);
+  myMove({ vx: Math.round(Math.cos(ang) * pw * 1000) / 1000, vy: Math.round(Math.sin(ang) * pw * 1000) / 1000 });
 }
 function boardGolf(c) {
   const g = GAMES.golf, b = S.board, a = GOLF.anim, holeIx = a ? a.hole : b.hole, H = g.HOLES[holeIx];
@@ -1138,7 +1157,8 @@ function boardGolf(c) {
   }
   return `<div class="golfhead"><b>Hole ${holeIx + 1} of ${g.HOLES.length}: ${esc(H.name)}</b><span>Par ${H.par}</span></div>
     <div class="golfwrap">${banner}${msg}<canvas id="golfcv"></canvas></div>
-    ${c.myTurn && !a ? `<p class="center small mut" style="margin:8px 0 0">Drag back from anywhere, like a catapult, then let go</p>` : ""}${card}`;
+    ${c.myTurn && !a ? `<div class="golfctl"><button class="btn alt" data-act="golfreset">↺ Reset</button><span>Power <b id="golfpow">–</b></span><button class="btn green" id="golfhit" data-act="golfhit" disabled>⛳ Hit</button></div>
+    <p class="center small mut" style="margin:6px 0 0">Drag back from anywhere to aim, like a catapult. Let go, drag again to adjust, then press Hit.</p>` : ""}${card}`;
 }
 // ----- air hockey -----
 const RTC_CFG = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
@@ -1444,7 +1464,7 @@ function renderGame() {
   ${after}
   ${queue}
   <div class="foot">${MODE === "guest" ? `<span class="small mut" style="align-self:center">Game ${esc(S.room)}</span>` : ""}<button class="iconbtn" data-act="leave">Leave</button></div>`;
-  if (S.game === "golf") { const cv = document.getElementById("golfcv"); if (cv) { golfPointer(cv); drawGolf(); } }
+  if (S.game === "golf") { const cv = document.getElementById("golfcv"); if (cv) { golfPointer(cv); drawGolf(); golfHitUI(); } }
 }
 
 // ===== TAPS =====
@@ -1493,6 +1513,8 @@ app.addEventListener("click", e => {
     case "sound": PREF.sound = !PREF.sound; savePref(); Snd.init(); return render();
     case "tolobby": return toLobby();
     case "golfnext": GOLF.card = null; render(); return maybeCPU();
+    case "golfhit": return golfHit();
+    case "golfreset": GOLF.aim = null; drawGolf(); return golfHitUI();
     case "takesuggest": return takeSuggestion();
     case "nosuggest": if (MODE === "host" && S) { S.suggest = null; commit(); } return;
     case "opensuggest": SUGGEST = true; return render();
