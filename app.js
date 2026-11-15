@@ -543,6 +543,7 @@ function render() {
   if (f && f.id && MODE === "home" && app.querySelector("#" + f.id)) return; // don't wipe what they're typing
   if (MODE !== "host" && MODE !== "guest" && MODE !== "cpu") { app.dataset.hk = ""; hkStop(); }
   if (MODE === "home" && PREF.game === "tt") preloadDeck(PREF.deck || "animals");
+  if (PREF.game === "wi") preloadFaces();
   if (S && S.game === "tt") preloadDeck((S.board && S.board.deck) || (S.opts && S.opts.deck) || "animals");
   if (MODE === "home") return renderHome();
   if (MODE === "join") return renderJoin();
@@ -564,6 +565,7 @@ const soundBtn = () => `<button class="iconbtn" data-act="sound">${PREF.sound ? 
 
 function renderHome() {
   if (PREF.game === "tt") preloadDeck(PREF.deck || "animals");
+  if (PREF.game === "wi") preloadFaces();
   const saved = ls.get("h2h_host", null);
   const resume = saved && saved.S && GAMES[saved.S.game] && Date.now() - saved.t < 3 * 3600e3 && saved.S.players.length > 1 ? saved : null;
   if (!GAMES[PREF.game]) PREF.game = "ttt";
@@ -659,6 +661,7 @@ function inviteBlock() {
 
 function renderLobby() {
   if (S.game === "tt") preloadDeck((S.opts && S.opts.deck) || "animals");
+  if (S.game === "wi") preloadFaces();
   const host = MODE === "host", n = S.players.length;
   app.innerHTML = `
   <div class="top"><span class="t">${esc(G().name)}</span>${soundBtn()}</div>
@@ -890,7 +893,14 @@ function boardTT(c) {
   const info = [b.pot ? `${b.pot} card${b.pot > 1 ? "s" : ""} in the middle` : "", S.phase === "play" ? `Round ${b.rounds + (ttRevealPending() ? 0 : 1)} of ${GAMES.tt.MAX_ROUNDS}` : ""].filter(Boolean).join(" · ");
   return h + `<div class="ttinfo">${info}</div><p class="center small mut" style="margin-top:6px">${d.icon} ${esc(d.name)}: ${esc(d.note)}</p>`;
 }
+// painted portrait (img/faces/<name>.webp); the drawn face is the fallback if a picture is missing
 function faceSVG(i) {
+  const n = GAMES.wi.PEOPLE[i].name.toLowerCase();
+  return `<img class="face" src="img/faces/${n}.webp" alt="" decoding="async" onerror="this.outerHTML=faceDrawn(${i})">`;
+}
+let facesLoaded = false;
+function preloadFaces() { if (facesLoaded) return; facesLoaded = true; GAMES.wi.PEOPLE.forEach(p => { const im = new Image(); im.src = "img/faces/" + p.name.toLowerCase() + ".webp"; }); }
+function faceDrawn(i) {
   const p = GAMES.wi.PEOPLE[i], has = k => p.x.includes(k), sk = SKIN[p.skin], hc = HAIR[p.hair];
   const darker = p.skin >= 4 ? "rgba(0,0,0,.35)" : "rgba(120,60,40,.35)";
   let back = "", top = "", hat = "", extra = "";

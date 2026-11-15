@@ -358,15 +358,16 @@
 
   // ===== WHO IS IT? (Guess Who style) =====
   // [name, skin 0-5, hair colour, hair style, eye colour, extras] extras: g glasses, h beanie, c cap, b beard, m moustache, e earrings, s big smile, r rosy cheeks, f freckles
+  // Answers match the painted portraits in img/faces/ (art library: who-is-it/). Rosy cheeks was dropped: nearly every portrait has some.
   const PEOPLE = [
     ["Alfie", 1, "brown", "short", "blue", "cs"], ["Bella", 0, "blonde", "long", "blue", "er"], ["Carys", 2, "black", "curly", "brown", "ges"],
     ["Dai", 0, "grey", "short", "green", "bmg"], ["Ella", 3, "black", "bun", "brown", "es"], ["Finn", 0, "ginger", "short", "green", "fs"],
-    ["Gwen", 1, "ginger", "long", "blue", "hfr"], ["Hassan", 3, "black", "short", "brown", "b"], ["Isla", 0, "brown", "long", "green", "g"],
+    ["Gwen", 1, "ginger", "long", "blue", "hfr"], ["Hassan", 3, "black", "short", "brown", "bm"], ["Isla", 0, "brown", "long", "green", "g"],
     ["Jack", 1, "blonde", "short", "blue", "h"], ["Kemi", 5, "black", "curly", "brown", "es"], ["Leo", 2, "brown", "curly", "brown", "cm"],
-    ["Maya", 4, "black", "long", "brown", "he"], ["Nia", 5, "brown", "bun", "green", "gs"], ["Owen", 0, "none", "bald", "blue", "bg"],
+    ["Maya", 4, "black", "long", "brown", "he"], ["Nia", 5, "brown", "bun", "green", "gse"], ["Owen", 0, "grey", "bald", "blue", "bmg"],
     ["Priya", 3, "black", "long", "brown", "eg"], ["Rhys", 1, "black", "short", "blue", "ms"], ["Sophie", 0, "blonde", "bun", "green", "frs"],
     ["Theo", 2, "ginger", "curly", "blue", "fc"], ["Uma", 4, "grey", "bun", "brown", "ge"], ["Vic", 1, "none", "bald", "brown", "mrs"],
-    ["Will", 0, "blonde", "curly", "green", "b"], ["Zara", 4, "brown", "long", "blue", "ce"], ["Mo", 5, "grey", "short", "brown", "bmh"],
+    ["Will", 0, "blonde", "curly", "green", "bm"], ["Zara", 4, "brown", "long", "blue", "ce"], ["Mo", 5, "grey", "short", "brown", "bmh"],
   ].map(([name, skin, hair, style, eyes, x]) => ({ name, skin, hair, style, eyes, x }));
   const has = (p, k) => p.x.includes(k);
   const QUESTIONS = [
@@ -379,7 +380,7 @@
     ["Is their hair in a bun?", p => p.style === "bun"], ["Do they have blue eyes?", p => p.eyes === "blue"],
     ["Do they have brown eyes?", p => p.eyes === "brown"], ["Do they have green eyes?", p => p.eyes === "green"],
     ["Are they wearing earrings?", p => has(p, "e")], ["Are they showing their teeth?", p => has(p, "s")],
-    ["Do they have rosy cheeks?", p => has(p, "r")], ["Do they have freckles?", p => has(p, "f")],
+    ["Do they have short hair?", p => p.style === "short"], ["Do they have freckles?", p => has(p, "f")],
   ];
   function wiAI(S, seat, level) {
     const b = S.board;

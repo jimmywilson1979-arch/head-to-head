@@ -40,6 +40,7 @@ Hard is unbeatable at Noughts & Crosses, very strong at Connect 4 and Dots & Box
 - Testing on one device: add `?local` to the link and open two tabs (no internet needed).
 
 - **Who Is It?** (Guess Who style) – 24 original cartoon people. Each player picks a secret person, then you take turns asking yes/no questions; the app answers and flips down everyone who doesn't match. Tap "I know who it is!" to guess – a wrong guess ends your go.
+  - The 24 faces are painted portraits (`img/faces/`, also in the art library under `who-is-it/`). Each person's answers in `games.js` match their portrait exactly, so if a face is ever replaced, check its answers too. "Rosy cheeks?" became "Short hair?" because nearly every portrait has some pink in its cheeks.
 - **Mini Golf** – 6 holes (par 18) with walls, blocks, sand and water. Drag back anywhere on the course like a catapult and let go. Take turns; both balls are on the course. Water = back where you were plus a penalty stroke; 6 shots max per hole. Lowest total wins. Every phone runs exactly the same physics, so shots play out identically everywhere.
 - **Air Hockey** – real-time, first to 7. Two ways to play: **📱📱 Phones end to end** (each phone shows its own half – put the phones top to top and the puck slides from one screen to the other) or **🖥️ Whole table** (each phone shows the full table, your goal at the bottom – use this when you're not side by side). Drag anywhere on your half to move your paddle.
 
