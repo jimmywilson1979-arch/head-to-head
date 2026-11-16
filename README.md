@@ -32,6 +32,7 @@ The host can switch games between rounds.
 
 ## Play the computer
 Pick **Easy**, **Medium** or **Hard** and press **Play the computer** – no second phone needed. Good for testing on your own.
+For the race games (Flag Quiz, Symbol Snap, Spot the Difference, Word Search) the level sets how fast the computer is, and in Flag Quiz how often it knows the hard flags.
 Hard is unbeatable at Noughts & Crosses, very strong at Connect 4 and Dots & Boxes, hunts ships properly at Battleships, and at Rock Paper Scissors it learns your habits.
 
 ## Good to know
@@ -47,6 +48,11 @@ Hard is unbeatable at Noughts & Crosses, very strong at Connect 4 and Dots & Box
 - The **Standard / Kids** switch appears under the game picker (and in the lobby, and after a game against the computer) whenever one of the word games is picked.
 - **Mini Golf** – 6 holes (par 18) with walls, blocks, sand and water. Drag back anywhere on the course like a catapult to set the direction and power. The aim stays when you let go, so you can drag again to fine-tune it (or press Reset), then press **⛳ Hit**. Dragging off the edge of the course is fine. Take turns; both balls are on the course. Water = back where you were plus a penalty stroke; 6 shots max per hole. Lowest total wins. Every phone runs exactly the same physics, so shots play out identically everywhere.
 - **Air Hockey** – real-time, first to 7. Two ways to play: **📱📱 Phones end to end** (each phone shows its own half – put the phones top to top and the puck slides from one screen to the other) or **🖥️ Whole table** (each phone shows the full table, your goal at the bottom – use this when you're not side by side). Drag anywhere on your half to move your paddle.
+
+- **Flag Quiz** – a race: a flag shows on both phones with 4 countries to pick from (from the same part of the world, so it's not a giveaway). First right answer scores. Get it wrong and you're out for that flag, but the other player can still answer. After each flag you both see the answer and its capital. 10 flags, from easy (Wales, France) to hard (Bhutan, Malawi). **Kids:** 8 well-known flags with 3 big answer buttons. 175 flags in `img/flags/` (flag-icons, MIT licence); near-identical pairs like Chad and Romania never appear as options together.
+- **Symbol Snap** (Dobble style) – there's a middle card and your own card. They always share exactly one picture: tap it first to win the middle card, which becomes your new card. A wrong tap freezes you for a second. First to 10 cards wins. **Kids:** 6 pictures a card instead of 8, first to 8. The deck is built the proper Dobble way (57 cards, or 31 for Kids), so every pair of cards shares exactly one picture.
+- **Spot the Difference** – two pictures that are almost the same; race to tap the differences on either one. Each find is circled in your colour. Tap a wrong spot and you get a ✖ and a one-second freeze. 3 pictures a game, 7 differences each (Kids: 5 bigger, more obvious ones). Pictures are made fresh every game from 6 scenes (Garden, Under the sea, Space, Christmas Eve, Farm, Seaside): things go missing, change, flip round, grow or shrink, appear, and bits of the background change too. If you're both stuck, both tap **Skip this picture** (against the computer it skips straight away), and the ones nobody found are shown with dashed rings.
+- The **Standard / Kids** switch appears for these three as well.
 
 ## Coming next
 - More **Card Clash** themes (see ideas list)

@@ -758,6 +758,161 @@
     return pool.length && Math.random() < .6 ? { cw: i, word: rnd(pool) } : { pass: true };
   }
 
+  // ===== shared by the three race games below =====
+  // After each flag / match / picture, both phones show the answer for a moment (REV ms) before the next one can be played.
+  const REV = { flag: 1900, snap: 1100, spot: 2600 };
+  const raceResult = sc => ({ w: sc[0] === sc[1] ? "draw" : sc[0] > sc[1] ? 0 : 1, line: [] });
+
+  // ===== FLAG QUIZ ===== a flag shows on both phones; the first right answer scores. A wrong answer locks you out of that flag.
+  // [code, name, capital, continent, tier 0 easy / 1 medium / 2 hard]. Pictures: img/flags (flag-icons, MIT licence).
+  const FLAGS = [["gb-wls","Wales","Cardiff","EU",0],["gb-eng","England","London","EU",0],["gb-sct","Scotland","Edinburgh","EU",0],["gb","United Kingdom","London","EU",0],["ie","Ireland","Dublin","EU",0],["fr","France","Paris","EU",0],["es","Spain","Madrid","EU",0],["it","Italy","Rome","EU",0],["de","Germany","Berlin","EU",0],["us","USA","Washington, D.C.","NA",0],["ca","Canada","Ottawa","NA",0],["br","Brazil","Brasília","SA",0],["au","Australia","Canberra","OC",0],["cn","China","Beijing","AS",0],["jp","Japan","Tokyo","AS",0],["in","India","New Delhi","AS",0],["mx","Mexico","Mexico City","NA",0],["gr","Greece","Athens","EU",0],["nl","Netherlands","Amsterdam","EU",0],["jm","Jamaica","Kingston","NA",0],["ch","Switzerland","Bern","EU",0],["se","Sweden","Stockholm","EU",0],["no","Norway","Oslo","EU",0],["za","South Africa","Pretoria","AF",0],["nz","New Zealand","Wellington","OC",0],["eg","Egypt","Cairo","AF",0],["ar","Argentina","Buenos Aires","SA",0],["pt","Portugal","Lisbon","EU",0],["ru","Russia","Moscow","EU",0],["tr","Turkey","Ankara","AS",0],["ke","Kenya","Nairobi","AF",0],["kr","South Korea","Seoul","AS",0],["dk","Denmark","Copenhagen","EU",0],["fi","Finland","Helsinki","EU",0],["be","Belgium","Brussels","EU",0],["pl","Poland","Warsaw","EU",0],["ng","Nigeria","Abuja","AF",0],["at","Austria","Vienna","EU",1],["hr","Croatia","Zagreb","EU",1],["cz","Czechia","Prague","EU",1],["hu","Hungary","Budapest","EU",1],["ro","Romania","Bucharest","EU",1],["ua","Ukraine","Kiev","EU",1],["is","Iceland","Reykjavik","EU",1],["il","Israel","Jerusalem","AS",1],["sa","Saudi Arabia","Riyadh","AS",1],["th","Thailand","Bangkok","AS",1],["vn","Vietnam","Hanoi","AS",1],["ph","Philippines","Manila","AS",1],["id","Indonesia","Jakarta","AS",1],["my","Malaysia","Kuala Lumpur","AS",1],["sg","Singapore","Singapore","AS",1],["pk","Pakistan","Islamabad","AS",1],["bd","Bangladesh","Dhaka","AS",1],["co","Colombia","Bogotá","SA",1],["cl","Chile","Santiago","SA",1],["pe","Peru","Lima","SA",1],["ve","Venezuela","Caracas","SA",1],["cu","Cuba","Havana","NA",1],["gh","Ghana","Accra","AF",1],["ma","Morocco","Rabat","AF",1],["tn","Tunisia","Tunis","AF",1],["et","Ethiopia","Addis Ababa","AF",1],["sn","Senegal","Dakar","AF",1],["cm","Cameroon","Yaoundé","AF",1],["ir","Iran","Tehran","AS",1],["iq","Iraq","Baghdad","AS",1],["ae","United Arab Emirates","Abu Dhabi","AS",1],["qa","Qatar","Doha","AS",1],["np","Nepal","Kathmandu","AS",1],["lk","Sri Lanka","Sri Jayawardenepura Kotte, Colombo","AS",1],["mn","Mongolia","Ulaanbaatar","AS",1],["kz","Kazakhstan","Astana","AS",1],["ee","Estonia","Tallinn","EU",1],["lv","Latvia","Riga","EU",1],["lt","Lithuania","Vilnius","EU",1],["sk","Slovakia","Bratislava","EU",1],["si","Slovenia","Ljubljana","EU",1],["rs","Serbia","Belgrade","EU",1],["bg","Bulgaria","Sofia","EU",1],["bt","Bhutan","Thimphu","AS",1],["kp","North Korea","Pyongyang","AS",1],["lu","Luxembourg","Luxembourg City","EU",2],["li","Liechtenstein","Vaduz","EU",2],["mt","Malta","Valletta","EU",2],["cy","Cyprus","Nicosia","EU",2],["al","Albania","Tirana","EU",2],["mk","North Macedonia","Skopje","EU",2],["ba","Bosnia and Herzegovina","Sarajevo","EU",2],["me","Montenegro","Podgorica","EU",2],["md","Moldova","Chișinău","EU",2],["by","Belarus","Minsk","EU",2],["ge","Georgia","Tbilisi","AS",2],["am","Armenia","Yerevan","AS",2],["az","Azerbaijan","Baku","AS",2],["uz","Uzbekistan","Tashkent","AS",2],["kg","Kyrgyzstan","Bishkek","AS",2],["af","Afghanistan","Kabul","AS",2],["jo","Jordan","Amman","AS",2],["lb","Lebanon","Beirut","AS",2],["sy","Syria","Damascus","AS",2],["kw","Kuwait","Kuwait City","AS",2],["bh","Bahrain","Manama","AS",2],["om","Oman","Muscat","AS",2],["ye","Yemen","Sana'a","AS",2],["la","Laos","Vientiane","AS",2],["kh","Cambodia","Phnom Penh","AS",2],["mm","Myanmar","Naypyidaw","AS",2],["bn","Brunei","Bandar Seri Begawan","AS",2],["tl","East Timor","Dili","AS",2],["pg","Papua New Guinea","Port Moresby","OC",2],["fj","Fiji","Suva","OC",2],["ws","Samoa","Apia","OC",2],["to","Tonga","Nukuʻalofa","OC",2],["bo","Bolivia","Sucre","SA",2],["py","Paraguay","Asunción","SA",2],["uy","Uruguay","Montevideo","SA",2],["ec","Ecuador","Quito","SA",2],["gy","Guyana","Georgetown","SA",2],["sr","Suriname","Paramaribo","SA",2],["pa","Panama","Panama City","NA",2],["cr","Costa Rica","San José","NA",2],["ni","Nicaragua","Managua","NA",2],["hn","Honduras","Tegucigalpa","NA",2],["sv","El Salvador","San Salvador","NA",2],["gt","Guatemala","Guatemala City","NA",2],["bz","Belize","Belmopan","NA",2],["ht","Haiti","Port-au-Prince","NA",2],["do","Dominican Republic","Santo Domingo","NA",2],["tt","Trinidad and Tobago","Port of Spain","SA",2],["bb","Barbados","Bridgetown","NA",2],["bs","Bahamas","Nassau","NA",2],["dz","Algeria","Algiers","AF",2],["ly","Libya","Tripoli","AF",2],["sd","Sudan","Khartoum","AF",2],["ss","South Sudan","Juba","AF",2],["er","Eritrea","Asmara","AF",2],["dj","Djibouti","Djibouti","AF",2],["so","Somalia","Mogadishu","AF",2],["ug","Uganda","Kampala","AF",2],["rw","Rwanda","Kigali","AF",2],["bi","Burundi","Bujumbura","AF",2],["tz","Tanzania","Dodoma","AF",2],["mw","Malawi","Lilongwe","AF",2],["zm","Zambia","Lusaka","AF",2],["zw","Zimbabwe","Harare","AF",2],["mz","Mozambique","Maputo","AF",2],["bw","Botswana","Gaborone","AF",2],["na","Namibia","Windhoek","AF",2],["ao","Angola","Luanda","AF",2],["cd","DR Congo","Kinshasa","AF",2],["cg","Congo","Brazzaville","AF",2],["ga","Gabon","Libreville","AF",2],["cf","Central African Republic","Bangui","AF",2],["td","Chad","N'Djamena","AF",2],["ne","Niger","Niamey","AF",2],["ml","Mali","Bamako","AF",2],["bf","Burkina Faso","Ouagadougou","AF",2],["ci","Ivory Coast","Yamoussoukro","AF",2],["lr","Liberia","Monrovia","AF",2],["sl","Sierra Leone","Freetown","AF",2],["gn","Guinea","Conakry","AF",2],["gm","Gambia","Banjul","AF",2],["cv","Cape Verde","Praia","AF",2],["mr","Mauritania","Nouakchott","AF",2],["mg","Madagascar","Antananarivo","AF",2],["mu","Mauritius","Port Louis","AF",2],["sc","Seychelles","Victoria","AF",2],["ad","Andorra","Andorra la Vella","EU",2],["mc","Monaco","Monaco","EU",2],["sm","San Marino","San Marino","EU",2],["va","Vatican City","Vatican City","EU",2],["mv","Maldives","Malé","AS",2],["tm","Turkmenistan","Ashgabat","AS",2],["tj","Tajikistan","Dushanbe","AS",2]];
+  const FQ_TWINS = [["td", "ro"], ["mc", "id"], ["ie", "ci"]]; // near-identical flags never appear as options together
+  const fqClash = (a, b) => FQ_TWINS.some(p => p.includes(a) && p.includes(b));
+  function fqPlan(kids) { // the flags for one game, easiest first
+    const tier = k => shuffle(FLAGS.filter(f => f[4] === k));
+    if (kids) return tier(0).slice(0, 8);
+    return [...tier(0).slice(0, 3), ...tier(1).slice(0, 4), ...tier(2).slice(0, 3)];
+  }
+  function fqOptions(f, kids) {
+    let pool = FLAGS.filter(x => x !== f && !fqClash(x[0], f[0]) && (!kids || x[4] === 0));
+    if (!kids) { const near = pool.filter(x => x[3] === f[3] && Math.abs(x[4] - f[4]) <= 1); if (near.length >= 5) pool = near; } // same part of the world, so it's not a giveaway
+    const picks = [];
+    for (const x of shuffle(pool)) { if (picks.length >= (kids ? 2 : 3)) break; if (!picks.some(p => fqClash(p[0], x[0]))) picks.push(x); }
+    return shuffle([f, ...picks]);
+  }
+  function fqNext(S) {
+    const b = S.board; b.n++; b.out = [false, false]; b.picks = [null, null];
+    if (b.n >= b.total) { b.q = null; S.result = raceResult(b.score); return; }
+    const f = S.sec.plan[b.n], opts = fqOptions(f, b.kids);
+    S.sec.ans = opts.indexOf(f);
+    b.q = { flag: f[0], opts: opts.map(o => o[1]), tier: f[4] };
+  }
+  function fqEnd(S, w) { // this flag is done: w = the seat that got it, or null if you both got it wrong
+    const b = S.board, f = S.sec.plan[b.n];
+    b.prev = { n: b.n, flag: f[0], name: f[1], cap: f[2], opts: b.q.opts, ans: S.sec.ans, picks: b.picks.slice(), w };
+    if (w != null) b.score[w]++;
+    fqNext(S);
+  }
+  function fqAI(S, seat, level) {
+    const b = S.board; if (!b.q) return null;
+    const acc = ({ easy: [.8, .5, .3], medium: [.95, .72, .5], hard: [1, .92, .78] }[level] || [.95, .72, .5])[b.q.tier];
+    if (Math.random() < acc) return { fq: S.sec.ans, n: b.n };
+    const wrong = b.q.opts.map((_, i) => i).filter(i => i !== S.sec.ans && i !== b.picks[1 - seat]);
+    return { fq: rnd(wrong), n: b.n };
+  }
+
+  // ===== SYMBOL SNAP ===== (Dobble style) any two cards share exactly one picture. Find the one your card shares with the middle card.
+  const SN_SYM = ["🐶", "🐱", "🐰", "🦊", "🐻", "🐼", "🐸", "🐵", "🐷", "🐮", "🦁", "🐘", "🦒", "🐧", "🐢", "🐙", "🦋", "🐝", "🐞", "🦄",
+    "🐳", "🦖", "🦀", "🐌", "🍎", "🍌", "🍇", "🍓", "🍕", "🍔", "🍦", "🍩", "🥕", "🧀", "🌵", "🌻", "🌈", "⭐", "🌙", "☀️",
+    "⚡", "❄️", "🔥", "🎈", "🎁", "🎸", "⚽", "🚗", "🚀", "✈️", "🏠", "⏰", "🔑", "💡", "✏️", "🎩", "👑"];
+  const SN_KIDS = ["🐶", "🐱", "🐰", "🦊", "🐻", "🐼", "🐸", "🐵", "🐷", "🐮", "🦁", "🐘", "🦒", "🐧", "🐢", "🐙", "🦋", "🐞", "🦄", "🐳",
+    "🦖", "🍎", "🍌", "🍓", "🍕", "🍦", "⭐", "🌈", "☀️", "🎈", "🚗"];
+  function snDeck(n) { // a projective plane of prime order n: n*n + n + 1 cards with n + 1 pictures each
+    const cards = [];
+    for (let m = 0; m < n; m++) for (let c = 0; c < n; c++) { const k = [n * n + m]; for (let x = 0; x < n; x++) k.push(x * n + (m * x + c) % n); cards.push(k); }
+    for (let c = 0; c < n; c++) { const k = [n * n + n]; for (let y = 0; y < n; y++) k.push(c * n + y); cards.push(k); }
+    const top = []; for (let m = 0; m <= n; m++) top.push(n * n + m); cards.push(top);
+    return cards;
+  }
+  const snCommon = (a, b) => a.find(x => b.includes(x));
+  function snAI(S, seat) { const b = S.board; return { sn: snCommon(b.cards[seat].s, b.mid.s), n: b.n }; }
+
+  // ===== SPOT THE DIFFERENCE ===== two pictures that are nearly the same; race to tap the differences.
+  // Pictures are made fresh every game: a painted background (drawn in app.js) with emoji things placed on it.
+  // Each theme: zones [x, y, w, h, size, things], where things are emoji with * if flipping them shows (they face one way);
+  // props are parts of the background that can go missing (t) or change colour (c), with where they are and how big.
+  const SP_W = 300, SP_H = 200;
+  const SP_THEMES = {
+    garden: { name: "Garden", ic: "🌷", zones: [[105, 54, 125, 36, 20, "🐦* 🦋 🐝* 🎈 🪁"], [100, 130, 190, 62, 24, "🌷 🌻 🍄 🐌* 🐞 🐰* 🐿️* 🦔* 🐸 🌳 🌲 🐕* 🐢* 🦆*"], [8, 152, 90, 40, 22, "🌷 🍄 🐞 🐌* 🌼"]],
+      props: { sun: [262, 34, 24, "t"], cloud1: [70, 32, 26, "t"], cloud2: [178, 24, 22, "t"], door: [53, 128, 14, "c"], win: [35, 104, 12, "c"] } },
+    sea: { name: "Under the sea", ic: "🐠", zones: [[22, 22, 256, 140, 24, "🐠* 🐟* 🐡* 🐙 🐢* 🐬* 🦑 🦐* 🐳* 🦈* 🐠* 🐟*"], [60, 176, 170, 16, 20, "🦀 🐚 ⭐ 🐌*"]],
+      props: { weed: [28, 168, 24, "t"], rock: [262, 180, 20, "t"], bubbles: [150, 34, 18, "t"], coral: [215, 178, 16, "c"] } },
+    space: { name: "Space", ic: "🚀", zones: [[16, 16, 268, 168, 24, "🚀* 🛸 🪐 🌍 ⭐ 🌟 ☄️* 👽 🛰️* 💫 👾 🌙*"]],
+      props: { moon: [46, 40, 22, "t"], planet: [250, 150, 34, "c"], comet: [150, 26, 16, "t"] } },
+    snow: { name: "Christmas Eve", ic: "🎄", zones: [[110, 22, 130, 74, 20, "⭐ ❄️ 🌟 🦌* 🛷*"], [100, 140, 190, 52, 24, "⛄ 🎄 🎁 🦌* 🔔 🍪 🕯️ 🧦* 🛷* 🐧* 🎅"], [8, 156, 88, 36, 22, "🎁 🎄 🐧* 🍪"]],
+      props: { moon: [262, 30, 20, "t"], win: [48, 116, 12, "c"], wreath: [67, 124, 10, "t"], smoke: [82, 56, 14, "t"] } },
+    farm: { name: "Farm", ic: "🚜", zones: [[80, 30, 120, 50, 20, "🐦* 🦋 ☁️ 🐝*"], [10, 146, 280, 46, 24, "🐄* 🐖* 🐑* 🐓* 🐴* 🚜* 🌾 🐥* 🦆* 🐕* 🌻 🐐* 🥕"], [10, 126, 190, 18, 18, "🐥* 🌾 🐓* 🐇*"]],
+      props: { sun: [38, 32, 22, "t"], door: [255, 126, 14, "c"], loft: [255, 86, 10, "t"] } },
+    beach: { name: "Seaside", ic: "🏖️", zones: [[62, 44, 170, 36, 20, "🐦* 🪁 🎈 🦅*"], [72, 100, 216, 22, 20, "⛵* 🐬* 🐳* 🚤*"], [70, 140, 218, 52, 24, "🐚 🦀 ⛱️ 🏐 🍦 🏰 🦩* 🐢* 🍉 🕶️"], [10, 182, 58, 12, 18, "🐚 🦀"]],
+      props: { sun: [262, 30, 20, "t"], cloud: [120, 26, 22, "t"], palm: [32, 128, 30, "t"] } },
+  };
+  for (const t of Object.values(SP_THEMES)) t.zones = t.zones.map(z => ({ x: z[0], y: z[1], w: z[2], h: z[3], s: z[4], things: z[5].split(" ").map(e => ({ e: e.replace("*", ""), f: e.endsWith("*") })) }));
+  const spDist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+  function spMake(theme, kids) {
+    const T = SP_THEMES[theme], want = kids ? 12 : 18, nd = kids ? 5 : 7, k = kids ? 1.25 : 1;
+    const props = Object.entries(T.props).map(([id, p]) => ({ id, x: p[0], y: p[1], r: p[2], kind: p[3] }));
+    const area = T.zones.reduce((a, z) => a + z.w * z.h, 0);
+    const fits = (x, y, s, list, skip) => x - s / 2 >= 1 && x + s / 2 <= SP_W - 1 && y - s / 2 >= 1 && y + s / 2 <= SP_H - 1 && list.every((it, i) => i === skip || spDist([x, y], [it.x, it.y]) > (s + it.s) * .5 + 3) && props.every(p => spDist([x, y], [p.x, p.y]) > p.r + s * .5);
+    const spot = (s, list, zone) => { // a free place for something of size s
+      for (let t = 0; t < 200; t++) {
+        let z = zone; if (!z) { let r = Math.random() * area; z = T.zones.find(q => (r -= q.w * q.h) < 0) || T.zones[0]; }
+        const ss = Math.min(s, z.h + 8), m = ss / 2 + 3; // keep it fully inside the picture
+        const x = Math.min(SP_W - m, Math.max(m, z.x + Math.random() * z.w)), y = Math.min(SP_H - m, Math.max(m, z.y + Math.random() * z.h));
+        if (fits(x, y, ss, list)) return { x: Math.round(x), y: Math.round(y), z, s: ss };
+      }
+      return null;
+    };
+    const items = [];
+    for (let t = 0; items.length < want && t < 400; t++) {
+      let r = Math.random() * area; const z = T.zones.find(q => (r -= q.w * q.h) < 0) || T.zones[0];
+      const size = Math.round(z.s * k * (.85 + Math.random() * .35)), at = spot(size, items, z);
+      if (!at) continue;
+      const th = rnd(z.things);
+      if (items.filter(i => i.e === th.e).length >= 2) continue; // not too many of the same thing
+      items.push({ e: th.e, f: th.f, x: at.x, y: at.y, s: at.s, z: T.zones.indexOf(z), flip: th.f && Math.random() < .5 });
+    }
+    const N0 = items.length, A = items.map(i => Object.assign({}, i)), B = items.map(i => Object.assign({}, i));
+    const pA = {}, pB = {}; props.forEach(p => { pA[p.id] = 1; pB[p.id] = 1; });
+    const diffs = [], used = new Set();
+    const farFrom = (x, y, r) => diffs.every(d => spDist([x, y], [d.x, d.y]) > Math.max(34, (d.r + r) * .85 + 6)); // differences never overlap
+    const kinds = kids ? ["gone", "gone", "swap", "swap", "swap", "extra", "extra", "big", "prop"] : ["gone", "gone", "swap", "swap", "extra", "extra", "size", "flip", "flip", "prop", "prop"];
+    for (let t = 0; diffs.length < nd && t < 300; t++) {
+      const kind = rnd(kinds), side = Math.random() < .5 ? A : B, other = side === A ? B : A;
+      if (kind === "prop") {
+        const p = rnd(props); if (used.has("p" + p.id) || !farFrom(p.x, p.y, p.r + 4)) continue;
+        if (kids && p.kind === "c") continue;
+        (side === A ? pA : pB)[p.id] = p.kind === "t" ? 0 : 2; used.add("p" + p.id);
+        diffs.push({ x: p.x, y: p.y, r: p.r + 4 }); continue;
+      }
+      if (kind === "extra") {
+        const z = rnd(T.zones), size = Math.round(z.s * k), at = spot(size, items, z); if (!at || !farFrom(at.x, at.y, Math.max(16, at.s * .75))) continue;
+        const th = rnd(z.things);
+        side.push({ e: th.e, f: th.f, x: at.x, y: at.y, s: at.s, z: T.zones.indexOf(z), flip: false, extra: true });
+        items.push({ x: at.x, y: at.y, s: at.s }); // keep the space taken
+        diffs.push({ x: at.x, y: at.y, r: Math.max(16, at.s * .75) }); continue;
+      }
+      const i = Math.floor(Math.random() * N0); if (used.has(i)) continue;
+      const it = side[i]; if (!farFrom(it.x, it.y, Math.max(16, it.s * (kind === "size" || kind === "big" ? 1.2 : .75)))) continue;
+      if (kind === "gone") it.gone = true;
+      else if (kind === "swap") { const z = T.zones[it.z], opts = z.things.filter(o => o.e !== it.e); if (!opts.length) continue; const o = rnd(opts); it.e = o.e; it.f = o.f; it.flip = false; }
+      else if (kind === "flip") { if (!it.f) continue; it.flip = !it.flip; }
+      else { // size: bigger if there's room, otherwise smaller
+        const big = it.s * 1.55, room = fits(it.x, it.y, big, items, i);
+        if (kind === "big" && !room) continue;
+        it.s = Math.round(room ? big : it.s * .58);
+      }
+      used.add(i); diffs.push({ x: it.x, y: it.y, r: Math.max(16, Math.max(it.s, other[i].s) * .75) });
+    }
+    const pack = list => list.filter(i => !i.gone).map(i => [i.e, i.x, i.y, i.s, i.flip ? 1 : 0]);
+    return { pic: { theme, A: pack(A), B: pack(B), pA, pB, seed: Math.floor(Math.random() * 1e9) }, diffs };
+  }
+  function spStart(S) { // the next picture, or the end of the game
+    const b = S.board; b.p++;
+    b.skip = [false, false]; b.found = [];
+    if (b.p >= b.total) { b.pic = null; S.result = raceResult(b.score); return; }
+    const m = spMake(S.sec.plan[b.p], b.kids);
+    b.pic = m.pic; S.sec.diffs = m.diffs; b.left = m.diffs.length;
+  }
+  function spEnd(S) {
+    const b = S.board;
+    b.prev = { p: b.p, pic: b.pic, found: b.found, missed: S.sec.diffs.filter(d => !d.by && d.by !== 0).map(d => [d.x, d.y, d.r]) };
+    spStart(S);
+  }
+  function spAI(S, seat) {
+    const b = S.board, open = (S.sec.diffs || []).filter(d => d.by == null);
+    const d = rnd(open); return d ? { sp: [d.x + (Math.random() - .5) * 6, d.y + (Math.random() - .5) * 6], p: b.p } : null;
+  }
+
   // ===== THE GAME LIST =====
   // init(S): set S.board (everyone sees), S.sec (host only), S.turn (seat, or -1 when both act at once)
   // waiting(S, seat): does this seat need to act now?
@@ -1049,6 +1204,80 @@
       ai: cwAI,
       aiDelay: () => 1500 + Math.random() * 1200,
       cells: cwCells,
+    },
+    flag: {
+      id: "flag", name: "Flag Quiz", local: false, kidsOpt: true, reveal: REV.flag,
+      init(S) {
+        const kids = isKids(S); S.sec = { plan: fqPlan(kids) };
+        S.board = { kids, total: S.sec.plan.length, n: -1, score: [0, 0], q: null, out: [false, false], picks: [null, null], prev: null };
+        S.turn = -1; fqNext(S);
+      },
+      waiting: (S, seat) => !!S.board.q && !S.board.out[seat],
+      move(S, seat, mv) {
+        const b = S.board;
+        if (!mv || !b.q || mv.n !== b.n || !Number.isInteger(mv.fq) || mv.fq < 0 || mv.fq >= b.q.opts.length || b.out[seat]) return false;
+        b.picks[seat] = mv.fq; S.last = { seat, n: b.n, ok: mv.fq === S.sec.ans };
+        if (mv.fq === S.sec.ans) { fqEnd(S, seat); return "box"; }
+        b.out[seat] = true;
+        if (b.out[0] && b.out[1]) fqEnd(S, null);
+        return "no";
+      },
+      ai: fqAI,
+      aiDelay: (S, level) => REV.flag + ({ easy: 6500, medium: 4300, hard: 2500 }[level] || 4300) + Math.random() * 2500 + (S.board.q ? S.board.q.tier * 800 : 0),
+      aiKey: S => S.board.n,
+      FLAGS,
+    },
+    snap: {
+      id: "snap", name: "Symbol Snap", local: false, kidsOpt: true, reveal: REV.snap,
+      init(S) {
+        const kids = isKids(S), n = kids ? 5 : 7, syms = (kids ? SN_KIDS : SN_SYM).length;
+        const map = shuffle(Array.from({ length: syms }, (_, i) => i));
+        const deck = shuffle(snDeck(n).map(k => ({ s: shuffle(k.map(x => map[x])), r: Math.floor(Math.random() * 1e9) })));
+        S.sec = { deck };
+        S.board = { kids, target: kids ? 8 : 10, cards: [deck.pop(), deck.pop()], mid: deck.pop(), left: deck.length, n: 0, score: [0, 0], prev: null };
+        S.turn = -1;
+      },
+      waiting: () => true,
+      move(S, seat, mv) {
+        const b = S.board, x = mv && mv.sn;
+        if (!mv || mv.n !== b.n || !Number.isInteger(x) || !b.cards[seat].s.includes(x) || !b.mid.s.includes(x)) return false;
+        b.prev = { n: b.n, seat, sym: x, mid: b.mid, cards: b.cards.slice() };
+        b.score[seat]++; b.cards[seat] = b.mid; b.n++;
+        if (b.score[seat] >= b.target || !S.sec.deck.length) { S.result = raceResult(b.score); return "box"; }
+        b.mid = S.sec.deck.pop(); b.left = S.sec.deck.length;
+        return "box";
+      },
+      ai: snAI,
+      aiDelay: (S, level) => REV.snap + (({ easy: 7500, medium: 4800, hard: 2900 }[level] || 4800) + Math.random() * 2500) * (S.board.kids ? .85 : 1),
+      aiKey: S => S.board.n,
+      SYM: SN_SYM, KIDS: SN_KIDS,
+    },
+    spot: {
+      id: "spot", name: "Spot the Difference", local: false, kidsOpt: true, reveal: REV.spot, W: SP_W, H: SP_H, THEMES: SP_THEMES,
+      init(S) {
+        const kids = isKids(S);
+        S.sec = { plan: shuffle(Object.keys(SP_THEMES)).slice(0, 3), until: [0, 0] };
+        S.board = { kids, total: 3, p: -1, pic: null, found: [], left: 0, score: [0, 0], skip: [false, false], prev: null };
+        S.turn = -1; spStart(S);
+      },
+      waiting: S => !!S.board.pic,
+      move(S, seat, mv) {
+        const b = S.board; if (!mv || mv.p !== b.p || !b.pic) return false;
+        if (mv.skip) { if (b.skip[seat]) return false; b.skip[seat] = true; S.last = { seat, skip: true }; if (b.skip[0] && b.skip[1]) { spEnd(S); return "line"; } return "pick"; }
+        const t = mv.sp; if (!Array.isArray(t) || !Number.isFinite(t[0]) || !Number.isFinite(t[1])) return false;
+        const now = Date.now(); if (now < (S.sec.until[seat] || 0)) return false; // still in the penalty after a wrong tap
+        let best = null, bd = 1e9;
+        for (const d of S.sec.diffs) if (d.by == null) { const dd = spDist(t, [d.x, d.y]); if (dd <= d.r + 6 && dd < bd) { best = d; bd = dd; } }
+        if (!best) { S.sec.until[seat] = now + 1100; S.last = { seat, miss: [Math.round(t[0]), Math.round(t[1])], p: b.p, k: S.moves }; return "no"; }
+        best.by = seat; b.found.push([best.x, best.y, best.r, seat]); b.score[seat]++; b.left--; b.skip = [false, false];
+        S.last = { seat, hit: [best.x, best.y], p: b.p };
+        if (!b.left) spEnd(S);
+        return "box";
+      },
+      ai: spAI,
+      aiDelay: (S, level) => (S.board.found.length ? 0 : REV.spot) + (({ easy: 9500, medium: 6200, hard: 3600 }[level] || 6200) + Math.random() * 3000) * (S.board.kids ? .9 : 1),
+      aiKey: S => S.board.p,
+      make: spMake,
     },
   };
   root.GAMES = GAMES;

@@ -225,13 +225,16 @@ function commit() {
   render();
   maybeCPU();
 }
+let cpuFor = null;
 function maybeCPU() {
-  if (MODE !== "cpu" || !S || S.phase !== "play" || cpuTimer) return;
+  if (MODE !== "cpu" || !S || S.phase !== "play") return;
+  if (cpuTimer) { if (G().aiKey && cpuFor !== G().aiKey(S)) { clearTimeout(cpuTimer); cpuTimer = null; } else return; }
   const cs = S.seats.indexOf("cpu");
   if (cs < 0 || !G().waiting(S, cs) || ttRevealPending() || GOLF.anim) return;
   if (S.game === "golf" && GOLF.card && Date.now() < GOLF.card.until) { setTimeout(maybeCPU, Math.min(1500, GOLF.card.until - Date.now() + 60)); return; }
   const placing = S.game === "bs" && S.board.stage === "place";
   const extra = S.game === "rps" && REVEAL.until > Date.now() ? REVEAL.until - Date.now() : 0;
+  cpuFor = G().aiKey ? G().aiKey(S) : null;
   cpuTimer = setTimeout(() => {
     cpuTimer = null;
     if (MODE !== "cpu" || !S || S.phase !== "play" || !G().waiting(S, cs) || ttRevealPending()) return;
@@ -529,6 +532,9 @@ const GAME_ICON = {
   rps: `<div style="font-size:30px;line-height:54px;letter-spacing:-2px">✊✋✌️</div>`,
   hockey: `<svg viewBox="0 0 120 104"><rect x="22" y="4" width="76" height="96" rx="16" fill="#123a8a" stroke="#c7d2fe" stroke-width="4"/><line x1="24" y1="52" x2="96" y2="52" stroke="#ff5d73" stroke-width="2.5" stroke-dasharray="5 4"/><rect x="46" y="2" width="28" height="5" fill="#050914"/><rect x="46" y="97" width="28" height="5" fill="#050914"/><circle cx="60" cy="24" r="9" fill="#ffd23f"/><circle cx="52" cy="80" r="9" fill="#ff5d73"/><circle cx="70" cy="58" r="5" fill="#f1f5ff"/></svg>`,
   golf: `<svg viewBox="0 0 120 104"><rect x="6" y="6" width="108" height="92" rx="14" fill="#46ad5f" stroke="#a46a3c" stroke-width="6"/><circle cx="84" cy="34" r="8" fill="#0d1a10"/><line x1="84" y1="34" x2="84" y2="8" stroke="#eee" stroke-width="2.5"/><path d="M84 8 L100 13 L84 18Z" fill="#ff5d73"/><circle cx="36" cy="76" r="7" fill="#fff" stroke="#ff5d73" stroke-width="2"/><path d="M40 70 Q60 50 78 40" stroke="#fff" stroke-width="2" stroke-dasharray="3 4" fill="none"/></svg>`,
+  flag: `<svg viewBox="0 0 120 104"><rect x="20" y="10" width="5" height="88" rx="2.5" fill="#c7cde8"/><path d="M25 14 Q55 4 80 14 T112 14 V62 Q85 52 60 62 T25 62Z" fill="#fff"/><path d="M25 14 Q40 9 52 10 V58 Q40 58 25 62Z" fill="#2f9e57"/><path d="M80 14 Q96 20 112 14 V62 Q96 66 80 58Z" fill="#e23b3b"/><circle cx="96" cy="80" r="16" fill="#ffd23f"/><text x="96" y="87" text-anchor="middle" font-family="Fredoka" font-weight="700" font-size="20" fill="#0b1020">?</text></svg>`,
+  snap: `<svg viewBox="0 0 120 104"><circle cx="42" cy="54" r="36" fill="#fdfaf2" stroke="#ff5d73" stroke-width="4"/><circle cx="80" cy="50" r="36" fill="#fdfaf2" stroke="#ffd23f" stroke-width="4"/><g font-size="19" text-anchor="middle" dominant-baseline="central"><text x="28" y="40">🍕</text><text x="30" y="72">🚀</text><text x="61" y="52">🐸</text><text x="94" y="34">⭐</text><text x="98" y="66">🎈</text></g><circle cx="61" cy="52" r="15" fill="none" stroke="#51e08a" stroke-width="3.5"/></svg>`,
+  spot: `<svg viewBox="0 0 120 104"><rect x="4" y="18" width="54" height="68" rx="8" fill="#7cc8f5"/><rect x="62" y="18" width="54" height="68" rx="8" fill="#7cc8f5"/><rect x="4" y="60" width="54" height="26" fill="#63bf5b"/><rect x="62" y="60" width="54" height="26" fill="#63bf5b"/><circle cx="20" cy="34" r="7" fill="#ffd23f"/><g font-size="17" text-anchor="middle" dominant-baseline="central"><text x="40" y="66">🌷</text><text x="98" y="66">🌻</text></g><circle cx="98" cy="66" r="13" fill="none" stroke="#ff5d73" stroke-width="3.5"/></svg>`,
   wi: `<div class="wiico">${[3, 14, 18].map(i => `<i>${faceSVG(i)}</i>`).join("")}</div>`,
   hm: `<svg viewBox="0 0 120 104"><path d="M14 96H70M30 96V10H84V22M30 30L48 10" stroke="#c7d2fe" stroke-width="6" fill="none" stroke-linecap="round"/><circle cx="84" cy="34" r="10" fill="none" stroke="#ffd23f" stroke-width="5"/><path d="M84 44V66M84 50L72 60M84 50L96 60" stroke="#ffd23f" stroke-width="5" stroke-linecap="round" fill="none"/><g font-family="Fredoka" font-weight="700" font-size="17" fill="#ff5d73"><text x="56" y="92">A</text><text x="98" y="92">E</text></g><path d="M74 96H90M100 96" stroke="#eef2ff" stroke-width="3"/></svg>`,
   ws: `<svg viewBox="0 0 120 104"><rect x="8" y="4" width="104" height="96" rx="12" fill="#f4f1e8"/><rect x="16" y="15" width="88" height="20" rx="10" fill="#ff5d73" opacity=".45"/><path d="M28 50L92 92" stroke="#ffd23f" stroke-width="18" stroke-linecap="round" opacity=".55"/><g font-family="Fredoka" font-weight="700" font-size="15" fill="#1b2140" text-anchor="middle">${["CATZ", "QOLD", "MKNE", "BUSG"].map((r, y) => [...r].map((ch, x) => `<text x="${28 + x * 21}" y="${31 + y * 21}">${ch}</text>`).join("")).join("")}</g></svg>`,
@@ -600,7 +606,7 @@ function renderHome() {
     <p class="label">Pick a game</p>
     ${gamePicker(PREF.game)}
     ${PREF.game === "tt" ? `<div class="gap"></div><p class="label">Card Clash theme</p>${deckPicker(PREF.deck, "data-deck")}` : ""}
-    ${WORDG.includes(PREF.game) ? `<div class="gap"></div><p class="label">Words</p>${kidsSeg(PREF.kids, "data-kids")}` : ""}
+    ${KIDSG.includes(PREF.game) ? `<div class="gap"></div><p class="label">${kidsLabel(PREF.game)}</p>${kidsSeg(PREF.kids, "data-kids")}` : ""}
   </div>
   <button class="btn" data-act="host">📱 Play a friend<span class="sub">Get a QR code for them to scan</span></button>
   <div class="card" style="margin-top:22px">
@@ -696,7 +702,7 @@ function renderLobby() {
     ${n > 2 ? `<p class="small mut" style="margin:10px 0 0">Winner stays on. Everyone else waits their turn.</p>` : ""}
   </div>
   ${host ? `
-    <div class="card"><p class="label">Game</p>${gamePicker(S.game, "data-setgame")}${S.game === "tt" ? `<div class="gap"></div><p class="label">Theme</p>${deckPicker(S.opts && S.opts.deck, "data-setdeck")}` : ""}${WORDG.includes(S.game) ? `<div class="gap"></div><p class="label">Words</p>${kidsSeg(S.opts && S.opts.kids, "data-setkids")}` : ""}</div>
+    <div class="card"><p class="label">Game</p>${gamePicker(S.game, "data-setgame")}${S.game === "tt" ? `<div class="gap"></div><p class="label">Theme</p>${deckPicker(S.opts && S.opts.deck, "data-setdeck")}` : ""}${KIDSG.includes(S.game) ? `<div class="gap"></div><p class="label">${kidsLabel(S.game)}</p>${kidsSeg(S.opts && S.opts.kids, "data-setkids")}` : ""}</div>
     <button class="btn green" data-act="start" ${n < 2 ? "disabled" : ""}>${n < 2 ? `<span class="wait">⏳</span> Waiting for someone to join` : "▶ Start the game"}</button>` : ""}
   <div class="foot"><button class="iconbtn" data-act="leave">Leave</button></div>`;
 }
@@ -1405,6 +1411,7 @@ function renderGame() {
     if (S.game === "golf" && S.phase === "play") { const bl = S.board.balls[seat]; sub = bl.in ? (bl.gaveUp ? "picked up" : `in ✓ ${bl.strokes}`) : `${bl.strokes} shot${bl.strokes === 1 ? "" : "s"}`; }
     if (S.game === "tt" && !(over && S.result.w === seat)) sub = `${S.board.count[seat]} card${S.board.count[seat] === 1 ? "" : "s"}`;
     if (WORDG.includes(S.game) && S.board && !(over && S.result.w === seat)) { const n = S.board.score[seat]; sub = S.game === "ws" ? `${n} found` : `${n} word${n === 1 ? "" : "s"}`; }
+    if (RACEG.includes(S.game) && S.board && !(over && S.result.w === seat)) sub = raceChip(seat);
     return `<div class="chip p${seat} ${side} ${w && !simul ? "turn" : ""}"><span class="mk">${markFor(S.game, seat)}</span><span class="nm"><b>${label}</b><span>${sub}&nbsp;</span></span></div>`;
   };
   const w0 = (pl(S.seats[0]) || {}).wins || 0, w1 = (pl(S.seats[1]) || {}).wins || 0;
@@ -1420,6 +1427,7 @@ function renderGame() {
       else status = `${esc(nameOf(S.seats[L.w]))} wins the round`;
       if (L.w === "draw") sub = "Whoever wins the next round takes them all";
     }
+    else if (RACEG.includes(S.game)) [status, cls, sub] = raceStatus(me);
     else if (myTurn) {
       cls = "me";
       const wiPick = S.game === "wi" && S.board.stage === "pick";
@@ -1452,11 +1460,12 @@ function renderGame() {
     if (S.game === "golf") { const t = sd => S.board.scores[sd].reduce((x, y) => x + y, 0); sub = `Total strokes ${t(0)} – ${t(1)} (lowest wins)`; }
     if (S.game === "hm") sub = `Words ${S.board.score[0]} – ${S.board.score[1]}${S.board.prev ? `. The last word was ${S.board.prev.word} ${S.board.prev.pic || ""}` : ""}`;
     if (S.game === "ws") sub = `Words found ${S.board.score[0]} – ${S.board.score[1]}`;
+    if (RACEG.includes(S.game)) sub = raceOver() + (S.game === "flag" && S.board.prev ? `. The last one was ${esc(S.board.prev.name)}` : "");
     if (S.game === "cw") sub = `Words answered ${S.board.score[0]} – ${S.board.score[1]}`;
     if (S.game === "tt") sub = S.board.count[0] && S.board.count[1] ? `Most cards after ${GAMES.tt.MAX_ROUNDS} rounds: ${S.board.count[0]} – ${S.board.count[1]}` : "Won every card";
   }
 
-  const board = { ttt: boardTTT, c4: boardC4, dots: boardDots, bs: boardBS, rps: boardRPS, tt: boardTT, wi: boardWI, golf: boardGolf, hm: boardHM, ws: boardWS, cw: boardCW,
+  const board = { ttt: boardTTT, c4: boardC4, dots: boardDots, bs: boardBS, rps: boardRPS, tt: boardTT, wi: boardWI, golf: boardGolf, hm: boardHM, ws: boardWS, cw: boardCW, flag: boardFlag, snap: boardSnap, spot: boardSpot,
     hockey: () => `<div class="hkfinal"><span class="p0">${S.board.score[0]}</span><em>–</em><span class="p1">${S.board.score[1]}</span></div>` }[S.game](c);
 
   let after = "";
@@ -1471,7 +1480,7 @@ function renderGame() {
       ${me >= 0 || host ? `<button class="btn green" data-act="again">🔁 Play again</button>` : `<p class="center mut">Waiting for the next game…</p>`}
       ${MODE === "host" ? `<button class="btn" data-act="tolobby">🎮 Choose another game</button>` : ""}
       ${MODE === "guest" ? `<button class="btn" data-act="opensuggest">💡 Suggest another game</button>` : ""}
-      ${MODE === "cpu" ? `<div class="card"><p class="label">Switch game</p>${gamePicker(S.game, "data-setgame")}${S.game === "tt" ? `<div class="gap"></div><p class="label">Card Clash theme</p>${deckPicker(S.opts && S.opts.deck, "data-setdeck")}` : ""}${WORDG.includes(S.game) ? `<div class="gap"></div><p class="label">Words</p>${kidsSeg(S.opts && S.opts.kids, "data-setkids")}` : ""}${MODE === "cpu" ? `<div class="gap"></div><p class="label">Computer level</p>${levelSeg(S.level, "data-setlevel")}` : ""}</div>` : ""}
+      ${MODE === "cpu" ? `<div class="card"><p class="label">Switch game</p>${gamePicker(S.game, "data-setgame")}${S.game === "tt" ? `<div class="gap"></div><p class="label">Card Clash theme</p>${deckPicker(S.opts && S.opts.deck, "data-setdeck")}` : ""}${KIDSG.includes(S.game) ? `<div class="gap"></div><p class="label">${kidsLabel(S.game)}</p>${kidsSeg(S.opts && S.opts.kids, "data-setkids")}` : ""}${MODE === "cpu" ? `<div class="gap"></div><p class="label">Computer level</p>${levelSeg(S.level, "data-setlevel")}` : ""}</div>` : ""}
     </div>`;
   }
 
@@ -1479,7 +1488,7 @@ function renderGame() {
   const draws = S.draws ? `<div class="center small mut" style="margin-top:-4px;margin-bottom:8px">${S.draws} draw${S.draws > 1 ? "s" : ""}</div>` : "";
 
   app.innerHTML = `
-  <div class="top"><span class="t">${esc(g.name)}${g.word && S.board && S.board.kids ? ` <span class="small mut">· Kids</span>` : ""}${MODE === "cpu" ? ` <span class="small mut">· ${LEVELS[S.level]}</span>` : ""}</span><span class="row" style="flex:none;gap:6px">${gamesBtn()}${MODE === "host" ? `<button class="iconbtn" data-act="qr">${showQR ? "Hide QR" : "📱 Join QR"}</button>` : ""}${soundBtn()}</span></div>
+  <div class="top"><span class="t">${esc(g.name)}${(g.word || g.kidsOpt) && S.board && S.board.kids ? ` <span class="small mut">· Kids</span>` : ""}${MODE === "cpu" ? ` <span class="small mut">· ${LEVELS[S.level]}</span>` : ""}</span><span class="row" style="flex:none;gap:6px">${gamesBtn()}${MODE === "host" ? `<button class="iconbtn" data-act="qr">${showQR ? "Hide QR" : "📱 Join QR"}</button>` : ""}${soundBtn()}</span></div>
   ${connBanner()}${suggestBanner()}${suggestPanel()}
   ${MODE === "host" && showQR ? inviteBlock() : ""}
   <div class="bar">${chip(0, "")}<div class="score"><span><b>${w0}</b> – <b>${w1}</b></span></div>${chip(1, "r")}</div>
@@ -1493,7 +1502,8 @@ function renderGame() {
 }
 
 // ===== WORD GAMES: Hangman, Word Search, Crossword =====
-const WORDG = ["hm", "ws", "cw"];
+const WORDG = ["hm", "ws", "cw"], KIDSG = WORDG.concat(["flag", "snap", "spot"]);
+const kidsLabel = gm => WORDG.includes(gm) ? "Words" : "Version";
 function kidsSeg(on, attr) {
   return `<div class="seg">${[["0", "📚 Standard"], ["1", "🧒 Kids"]].map(([v, t]) => `<button class="${(on ? "1" : "0") === v ? "on" : ""}" ${attr}="${v}">${t}</button>`).join("")}</div>`;
 }
@@ -1653,13 +1663,182 @@ function hmAnswer() {
   HM.solving = false; HM.typed = []; myMove({ solve: word });
 }
 
+// ===== RACE GAMES: Flag Quiz, Symbol Snap, Spot the Difference =====
+// Both players play at once. After each flag / match / picture, both phones show the answer for a moment (game.reveal ms).
+const RACEG = ["flag", "snap", "spot"];
+let RV = { k: "", until: 0 };
+function raceRev() { // true while the last answer is still on show
+  const g = G(), b = S && S.board; if (!g.reveal || !b || !b.prev) return false;
+  const cur = S.game === "spot" ? b.p : b.n, pn = S.game === "spot" ? b.prev.p : b.prev.n;
+  if (pn !== cur - 1) return false;
+  const k = S.sid + ":" + S.round + ":" + cur;
+  if (RV.k !== k) { RV = { k, until: Date.now() + g.reveal }; setTimeout(() => { if (S && MODE !== "home") render(); }, g.reveal + 40); }
+  return Date.now() < RV.until;
+}
+const opp = me => S.seats[1 - me] === "cpu" ? "The computer" : esc(nameOf(S.seats[1 - me]));
+function raceStatus(me) { // [status, class, sub line]
+  const b = S.board, rev = raceRev(), mine = s => s === me && me >= 0;
+  if (S.game === "flag") {
+    if (rev) { const P = b.prev; return [P.w == null ? "Nobody got that one" : mine(P.w) ? "You got it! 🎉" : `${who(P.w)} got it`, P.w != null && mine(P.w) ? "me" : "", `It was <b>${esc(P.name)}</b>${P.cap ? ` · capital ${esc(P.cap)}` : ""}`]; }
+    if (me >= 0 && b.out[me]) return ["Not that one! ❌", "", `${opp(me)} can still answer`];
+    return ["Name the flag! 🏳️", "me", me >= 0 && b.out[1 - me] ? `${opp(me)} got it wrong. Your chance!` : ""];
+  }
+  if (S.game === "snap") {
+    if (rev) { const P = b.prev; return [mine(P.seat) ? "Snap! You got it 🎉" : `${who(P.seat)} got it`, mine(P.seat) ? "me" : "", `The match was ${GAMES.snap[b.kids ? "KIDS" : "SYM"][P.sym]}`]; }
+    if (Date.now() < SNL.until) return ["Oops! Not that one", "", "Wait a moment…"];
+    return ["Find the match! 👀", "me", "Tap the picture that's on your card AND the middle card"];
+  }
+  if (S.game === "spot") {
+    if (rev) return [`Picture ${b.prev.p + 1} done!`, "", b.prev.missed.length ? "White dashed rings show the ones nobody found" : "Every difference found"];
+    if (spMiss(me)) return ["Not there! ❌", "", "Wait a moment…"];
+    const sk = me >= 0 && b.skip[1 - me] && !b.skip[me] ? `${opp(me)} wants to skip this picture` : me >= 0 && b.skip[me] ? `Waiting for ${opp(me)} to skip too` : "";
+    return ["Spot the differences! 🔍", "me", sk || "Tap a difference on either picture"];
+  }
+  return ["", "", ""];
+}
+const raceChip = seat => { const n = S.board.score[seat]; return S.game === "flag" ? `${n} right` : S.game === "snap" ? `${n} card${n === 1 ? "" : "s"}` : `${n} found`; };
+const raceOver = () => { const [a, z] = S.board.score; return S.game === "flag" ? `Flags ${a} – ${z}` : S.game === "snap" ? `Cards won ${a} – ${z}` : `Differences found ${a} – ${z}`; };
+const raceScore = label => `<div class="rscore"><b class="p0">${S.board.score[0]}</b><span>${label}</span><b class="p1">${S.board.score[1]}</b></div>`;
+
+// ----- Flag Quiz -----
+function boardFlag(c) {
+  const b = S.board, rev = raceRev(), over = S.phase === "over";
+  const P = (rev || over) && b.prev ? b.prev : null, me = c.me;
+  const can = !P && c.myTurn && !pending;
+  const flag = P ? P.flag : b.q && b.q.flag, opts = P ? P.opts : b.q ? b.q.opts : [];
+  const picks = P ? P.picks : b.picks;
+  const btn = (o, i) => {
+    let cls = "";
+    if (P && i === P.ans) cls = "ok";
+    else if (picks.includes(i)) cls = "bad";
+    const tags = [0, 1].filter(s => picks[s] === i).map(s => `<i class="p${s}">${s === me ? "you" : S.seats[s] === "cpu" ? "cpu" : esc(nameOf(S.seats[s])).slice(0, 8)}</i>`).join("");
+    return `<button class="fqopt ${cls}" data-flag="${i}" ${can && !picks.includes(i) ? "" : "disabled"}>${esc(o)}${tags}</button>`;
+  };
+  const head = `<div class="hmcat"><span>🏳️ Flag ${Math.min((P ? P.n : b.n) + 1, b.total)} of ${b.total}</span><span class="mut">${b.kids ? "Kids" : ["Easy one", "Trickier", "Hard one"][(b.q || {}).tier] || ""}</span></div>`;
+  return `${head}<div class="fqwrap ${P ? "rev" : ""}">${flag ? `<img class="fqflag" src="img/flags/${flag}.svg" alt="">` : ""}</div>
+    <div class="fqopts ${b.kids ? "kids" : ""}">${opts.map(btn).join("")}</div>${raceScore("flags right")}`;
+}
+
+// ----- Symbol Snap -----
+let SNL = { until: 0, bad: null };
+function snRand(seed) { let t = seed >>> 0; return () => { t += 0x6D2B79F5; let r = Math.imul(t ^ t >>> 15, 1 | t); r ^= r + Math.imul(r ^ r >>> 7, 61 | r); return ((r ^ r >>> 14) >>> 0) / 4294967296; }; }
+function snCard(card, kids, opts = {}) {
+  const R = snRand(card.r), n = card.s.length, list = GAMES.snap[kids ? "KIDS" : "SYM"], a0 = R() * Math.PI * 2;
+  const syms = card.s.map((x, i) => {
+    const ring = i > 0, ang = a0 + (i - 1) * Math.PI * 2 / (n - 1);
+    const rad = ring ? (kids ? 31 : 33) : 0, x0 = 50 + Math.cos(ang) * rad, y0 = 50 + Math.sin(ang) * rad;
+    const sz = (kids ? 21 : 16.5) * (ring ? .85 + R() * .35 : 1.1 + R() * .15), rot = Math.round(R() * 70 - 35);
+    const cls = opts.hit === x ? "hit" : SNL.bad && SNL.bad.c === opts.id && SNL.bad.x === x && Date.now() < SNL.until ? "bad" : "";
+    return `<button class="sym ${cls}" data-sn="${x}" data-snc="${opts.id || ""}" style="left:${x0.toFixed(1)}%;top:${y0.toFixed(1)}%;--sz:${sz.toFixed(1)};--r:${rot}deg">${list[x]}</button>`;
+  }).join("");
+  return `<div class="sncard ${opts.cls || ""}">${syms}</div>`;
+}
+function boardSnap(c) {
+  const b = S.board, rev = raceRev(), me = c.me, P = (rev || S.phase === "over") && b.prev ? b.prev : null;
+  const mySeat_ = me >= 0 ? me : 0, locked = Date.now() < SNL.until;
+  const mid = P ? P.mid : b.mid, mine = P ? P.cards[mySeat_] : b.cards[mySeat_];
+  const hit = P ? P.sym : null;
+  const lab = me >= 0 ? "Your card" : `${esc(nameOf(S.seats[0]))}'s card`;
+  return `<div class="hmcat"><span>🃏 First to ${b.target} cards</span><span class="mut">${b.left} left in the pile</span></div>
+    <div class="snwrap ${locked ? "lock" : ""}"><p class="label center">Middle card</p>${snCard(mid, b.kids, { id: "m", hit, cls: P && P.seat !== me ? "p" + P.seat : "" })}
+    <p class="label center" style="margin-top:10px">${lab}</p>${snCard(mine, b.kids, { id: "y", hit: P && P.seat === mySeat_ ? hit : P ? null : null, cls: "mine p" + mySeat_ })}</div>
+    ${raceScore("cards won")}`;
+}
+function snapTap(x, which) {
+  const me = mySeat(), b = S.board; if (me < 0 || S.phase !== "play" || pending || raceRev() || Date.now() < SNL.until) return;
+  if (b.cards[me].s.includes(x) && b.mid.s.includes(x)) return myMove({ sn: x, n: b.n });
+  SNL = { until: Date.now() + 1000, bad: { c: which, x } }; buzz(120);
+  Snd.tone(220, .14, "triangle", .12); render(); setTimeout(() => { if (S && S.game === "snap") render(); }, 1020);
+}
+
+// ----- Spot the Difference -----
+let SPX = { k: "", until: 0, mine: false };
+function spBG(theme, p, seed) { // the painted background for each theme; p = which bits are there (1), missing (0) or a different colour (2)
+  const R = snRand(seed), on = k => p[k] !== 0, alt = k => p[k] === 2;
+  const grad = (id, a, z) => `<defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${z}"/></linearGradient></defs><rect width="300" height="200" fill="url(#${id})"/>`;
+  const cloud = (x, y, s) => `<g fill="#fff"><ellipse cx="${x}" cy="${y}" rx="${22 * s}" ry="${9 * s}"/><ellipse cx="${x - 9 * s}" cy="${y - 5 * s}" rx="${11 * s}" ry="${9 * s}"/><ellipse cx="${x + 8 * s}" cy="${y - 7 * s}" rx="${12 * s}" ry="${10 * s}"/></g>`;
+  const sun = (x, y, r) => `<circle cx="${x}" cy="${y}" r="${r + 7}" fill="#ffe066" opacity=".3"/><circle cx="${x}" cy="${y}" r="${r}" fill="#ffd23f"/>`;
+  const stars = (n, h) => Array.from({ length: n }, () => `<circle cx="${(R() * 300).toFixed(1)}" cy="${(R() * h).toFixed(1)}" r="${(.5 + R() * .9).toFixed(2)}" fill="#fff" opacity="${(.45 + R() * .55).toFixed(2)}"/>`).join("");
+  switch (theme) {
+    case "garden": return grad("bgg", "#7cc8f5", "#dff3ff") + (on("sun") ? sun(262, 34, 17) : "") + (on("cloud1") ? cloud(70, 34, 1.15) : "") + (on("cloud2") ? cloud(178, 26, .95) : "")
+      + `<path d="M0 122 Q60 90 130 114 T300 106 V200 H0Z" fill="#94d47c"/><rect y="124" width="300" height="76" fill="#63bf5b"/><path d="M0 124 Q75 118 150 125 T300 122 V130 H0Z" fill="#58b350"/>`
+      + `<rect x="24" y="92" width="58" height="50" fill="#f3dfbf"/><path d="M18 94 L53 66 L88 94Z" fill="#d94f4f"/><rect x="46" y="114" width="15" height="28" rx="2" fill="${alt("door") ? "#3f7be0" : "#8b4a2b"}"/><circle cx="58" cy="129" r="1.4" fill="#ffd23f"/>`
+      + `<rect x="29" y="98" width="13" height="12" fill="${alt("win") ? "#ffd23f" : "#a9dcff"}" stroke="#fff" stroke-width="1.6"/><rect x="65" y="98" width="13" height="12" fill="#a9dcff" stroke="#fff" stroke-width="1.6"/>`;
+    case "sea": return grad("bgs", "#3db4e6", "#0b4a86") + `<g fill="#fff" opacity=".07"><path d="M40 0 L80 0 L30 170 L10 170Z"/><path d="M160 0 L190 0 L170 170 L140 170Z"/><path d="M250 0 L275 0 L290 150 L270 150Z"/></g>`
+      + `<path d="M0 176 Q80 166 160 176 T300 172 V200 H0Z" fill="#e8cf8c"/>`
+      + (on("weed") ? `<g stroke="#2f9e57" stroke-width="5" fill="none" stroke-linecap="round"><path d="M22 196 Q12 180 22 166 T18 142"/><path d="M34 196 Q42 178 32 164 T38 148"/></g>` : "")
+      + (on("rock") ? `<ellipse cx="262" cy="185" rx="22" ry="13" fill="#7d8796"/><ellipse cx="255" cy="180" rx="8" ry="4" fill="#9aa3b0"/>` : "")
+      + (on("bubbles") ? `<g fill="none" stroke="#e8f7ff" stroke-width="1.6"><circle cx="146" cy="44" r="5"/><circle cx="155" cy="31" r="4"/><circle cx="149" cy="20" r="3"/></g>` : "")
+      + `<path d="M215 194 V176 M215 183 L206 171 M215 181 L224 169" stroke="${alt("coral") ? "#ffcc33" : "#ff6f91"}" stroke-width="5" stroke-linecap="round" fill="none"/>`;
+    case "space": return grad("bgp", "#0b1035", "#26124f") + stars(55, 200)
+      + (on("moon") ? `<circle cx="46" cy="40" r="18" fill="#e9e6d6"/><circle cx="40" cy="35" r="4" fill="#cfcbb8"/><circle cx="53" cy="46" r="3" fill="#cfcbb8"/>` : "")
+      + (on("comet") ? `<path d="M118 12 L147 26" stroke="#9fe7ff" stroke-width="5" stroke-linecap="round" opacity=".55"/><circle cx="150" cy="27" r="4.5" fill="#fff"/>` : "")
+      + `<circle cx="250" cy="150" r="24" fill="${alt("planet") ? "#ff9f43" : "#b07cff"}"/><path d="M232 142 Q250 136 268 146" stroke="rgba(255,255,255,.25)" stroke-width="4" fill="none"/><ellipse cx="250" cy="150" rx="40" ry="9" fill="none" stroke="#ffe6a8" stroke-width="3" transform="rotate(-18 250 150)"/>`;
+    case "snow": return grad("bgn", "#0c1a45", "#2c4f94") + stars(28, 110) + (on("moon") ? `<circle cx="262" cy="30" r="15" fill="#fdf3c2"/><circle cx="262" cy="30" r="21" fill="#fdf3c2" opacity=".18"/>` : "")
+      + `<path d="M0 134 Q90 116 170 134 T300 128 V200 H0Z" fill="#dfe9fb"/><path d="M0 150 Q100 140 200 152 T300 148 V200 H0Z" fill="#f4f8ff"/>`
+      + `<rect x="72" y="74" width="8" height="16" fill="#8a4430"/><rect x="26" y="94" width="56" height="48" fill="#a4553a"/><path d="M20 96 L54 70 L88 96Z" fill="#f7fbff"/>`
+      + `<rect x="41" y="109" width="14" height="13" fill="${alt("win") ? "#33415f" : "#ffd66b"}" stroke="#f7fbff" stroke-width="1.5"/><rect x="60" y="116" width="14" height="26" fill="#5b2c1c"/>`
+      + (on("wreath") ? `<circle cx="67" cy="124" r="4.5" fill="none" stroke="#2f9e57" stroke-width="3"/><circle cx="67" cy="128" r="1.4" fill="#e23b3b"/>` : "")
+      + (on("smoke") ? `<g fill="#c9d3e6" opacity=".8"><circle cx="78" cy="66" r="4"/><circle cx="83" cy="57" r="5"/><circle cx="80" cy="46" r="6"/></g>` : "");
+    case "farm": return grad("bgf", "#8fd3ff", "#e8f7ff") + (on("sun") ? sun(38, 32, 16) : "")
+      + `<path d="M0 116 Q100 98 200 114 T300 110 V200 H0Z" fill="#a6d672"/><rect y="142" width="300" height="58" fill="#7cc35b"/>`
+      + `<g stroke="#b98a52" stroke-width="3"><line x1="0" y1="126" x2="215" y2="126"/><line x1="0" y1="134" x2="215" y2="134"/>${Array.from({ length: 12 }, (_, i) => `<line x1="${8 + i * 18}" y1="120" x2="${8 + i * 18}" y2="140"/>`).join("")}</g>`
+      + `<rect x="224" y="96" width="62" height="46" fill="#c8423a"/><path d="M218 98 L255 70 L292 98Z" fill="#8f2d27"/>`
+      + (on("loft") ? `<circle cx="255" cy="86" r="6" fill="#ffe7a0" stroke="#fff" stroke-width="1.5"/>` : "")
+      + `<rect x="243" y="112" width="24" height="30" fill="${alt("door") ? "#3f7be0" : "#f4efe6"}"/><path d="M243 112 L267 142 M267 112 L243 142" stroke="#8f2d27" stroke-width="2"/>`;
+    case "beach": return grad("bgb", "#79c7f2", "#fff1cf") + (on("sun") ? sun(262, 30, 15) : "") + (on("cloud") ? cloud(120, 28, 1) : "")
+      + `<rect y="92" width="300" height="42" fill="#2f9fd6"/><g stroke="#fff" stroke-width="1.5" opacity=".45" fill="none"><path d="M10 104 q8 -4 16 0 t16 0"/><path d="M150 118 q8 -4 16 0 t16 0"/><path d="M230 100 q8 -4 16 0 t16 0"/></g>`
+      + `<path d="M0 134 Q100 124 200 136 T300 130 V200 H0Z" fill="#f2d79b"/>`
+      + (on("palm") ? `<path d="M38 172 Q28 132 32 96" stroke="#8b5a2b" stroke-width="7" fill="none" stroke-linecap="round"/><g fill="#2f9e57"><path d="M32 96 Q12 86 4 102 Q18 92 32 98Z"/><path d="M32 96 Q52 84 62 100 Q46 92 32 98Z"/><path d="M32 96 Q24 74 8 78 Q24 82 32 98Z"/><path d="M32 96 Q42 74 58 76 Q42 82 32 98Z"/></g>` : "");
+  }
+  return "";
+}
+function spPic(pic, side, b, extra) {
+  const items = pic[side], props = side === "A" ? pic.pA : pic.pB;
+  const things = items.map(([e, x, y, s, f]) => f ? `<g transform="translate(${x} ${y}) scale(-1 1)"><text x="0" y="0" font-size="${s}">${e}</text></g>` : `<text x="${x}" y="${y}" font-size="${s}">${e}</text>`).join("");
+  return `<svg class="spimg" data-spimg="${side}" viewBox="0 0 300 200">${spBG(pic.theme, props, pic.seed)}<g class="things" text-anchor="middle" dominant-baseline="central">${things}</g>${extra}</svg>`;
+}
+function spMiss(me) { // did I just tap a wrong spot? (shows a ✖ and pauses my taps for a moment)
+  const L = S.last, b = S.board;
+  if (!L || !L.miss || L.seat !== me || me < 0 || L.p !== b.p) return false;
+  const k = S.sid + ":" + S.round + ":" + L.k;
+  if (SPX.k !== k) { SPX = { k, until: Date.now() + 1100, mine: true }; buzz(120); setTimeout(() => { if (S && S.game === "spot") render(); }, 1120); }
+  return Date.now() < SPX.until;
+}
+function boardSpot(c) {
+  const b = S.board, rev = raceRev(), me = c.me, P = (rev || S.phase === "over") && b.prev ? b.prev : null;
+  const pic = P ? P.pic : b.pic; if (!pic) return raceScore("differences");
+  const found = P ? P.found : b.found;
+  let marks = found.map(([x, y, r, by]) => `<circle class="spfound p${by}" cx="${x}" cy="${y}" r="${r}"/>`).join("");
+  if (P) marks += P.missed.map(([x, y, r]) => `<circle class="spmissed" cx="${x}" cy="${y}" r="${r}"/>`).join("");
+  const L = S.last;
+  if (!P && spMiss(me)) marks += `<text class="spx" x="${L.miss[0]}" y="${L.miss[1]}" text-anchor="middle" dominant-baseline="central">✖</text>`;
+  const locked = !P && Date.now() < SPX.until && SPX.mine;
+  const T = GAMES.spot.THEMES[pic.theme];
+  const skip = !P && S.phase === "play" && me >= 0 ? `<button class="btn alt small spskip" data-act="spskip" ${b.skip[me] || pending ? "disabled" : ""}>${b.skip[me] ? "⏳ Waiting to skip…" : b.skip[1 - me] ? `🤷 Skip this picture (${opp(me)} wants to)` : "🤷 We're stuck: skip this picture"}</button>` : "";
+  return `<div class="hmcat"><span>${T.ic} ${T.name} · picture ${(P ? P.p : b.p) + 1} of ${b.total}</span><span class="mut">${P ? "" : `${b.left} left`}</span></div>
+    <div class="spwrap ${locked ? "lock" : ""} ${b.kids ? "kids" : ""}">${spPic(pic, "A", b, marks)}${spPic(pic, "B", b, marks)}</div>
+    ${raceScore("differences")}${skip}`;
+}
+function spotTap(e, svg) {
+  const me = mySeat(), b = S.board; if (me < 0 || S.phase !== "play" || pending || raceRev() || !b.pic || (SPX.mine && Date.now() < SPX.until)) return;
+  const r = svg.getBoundingClientRect(), x = (e.clientX - r.left) / r.width * 300, y = (e.clientY - r.top) / r.height * 200;
+  myMove({ sp: [Math.round(x * 10) / 10, Math.round(y * 10) / 10], p: b.p });
+}
+window.addEventListener("pointerdown", e => {
+  if (!S || !e.target.closest) return;
+  if (S.game === "snap") { const t = e.target.closest("[data-sn]"); if (t) { e.preventDefault(); snapTap(Number(t.dataset.sn), t.dataset.snc); } return; }
+  if (S.game === "spot") { const t = e.target.closest("[data-spimg]"); if (t) { e.preventDefault(); spotTap(e, t); } }
+});
+
 // ===== TAPS =====
 app.addEventListener("click", e => {
-  const el = e.target.closest("[data-suggest],[data-act],[data-mv],[data-fire],[data-rps],[data-tt],[data-wiask],[data-wiguess],[data-deck],[data-setdeck],[data-pickgame],[data-setgame],[data-level],[data-setlevel],[data-kick],[data-key],[data-cwclue],[data-cwcell],[data-kids],[data-setkids]");
+  const el = e.target.closest("[data-suggest],[data-act],[data-mv],[data-fire],[data-rps],[data-tt],[data-wiask],[data-wiguess],[data-deck],[data-setdeck],[data-pickgame],[data-setgame],[data-level],[data-setlevel],[data-kick],[data-key],[data-cwclue],[data-cwcell],[data-kids],[data-setkids],[data-flag]");
   if (!el) return;
   const d = el.dataset;
   if (d.suggest) { if (MODE === "guest" && T) { T.send({ t: "suggest", pid: ME.id, game: d.suggest }); SUGGEST = false; toast(`Suggested ${GAMES[d.suggest].name} to ${nameOf(S.host)}`); render(); } return; }
   if (d.mv != null) return myMove(Number(d.mv));
+  if (d.flag != null) { if (!raceRev()) myMove({ fq: Number(d.flag), n: S.board.n }); return; }
   if (d.fire != null) return myMove({ fire: Number(d.fire) });
   if (d.rps) return myMove(d.rps);
   if (d.tt != null) return myMove(Number(d.tt));
@@ -1713,6 +1892,12 @@ app.addEventListener("click", e => {
     case "cwback": CW.typed.pop(); return render();
     case "cwcheck": return cwAnswer();
     case "cwpass": return myMove({ pass: true });
+    case "spskip": {
+      if (!S || S.game !== "spot" || !S.board.pic) return;
+      const p = S.board.p; myMove({ skip: true, p });
+      if (MODE === "cpu" && S.board.p === p && applyMove("cpu", { skip: true, p }, null)) { afterMove(); commit(); } // the computer always agrees
+      return;
+    }
     case "golfreset": GOLF.aim = null; drawGolf(); return golfHitUI();
     case "takesuggest": return takeSuggestion();
     case "nosuggest": if (MODE === "host" && S) { S.suggest = null; commit(); } return;

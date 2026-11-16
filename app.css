@@ -382,3 +382,40 @@ img.face { aspect-ratio: 1; object-fit: cover; border-radius: 7px; background: #
 .cwclues button.on { border-color: var(--acc); box-shadow: inset 0 0 0 2px var(--acc); }
 .cwclues button:disabled:not(.done) { opacity: .85; }
 .cwclues button.done { opacity: .7; } .cwclues button.done.p0 { border-color: var(--p0); } .cwclues button.done.p1 { border-color: var(--p1); }
+
+/* ===== Flag Quiz ===== */
+.fqwrap { display: grid; place-items: center; margin: 4px 0 12px; min-height: 120px; }
+.fqflag { width: 100%; max-width: 340px; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 12px; box-shadow: 0 6px 0 rgba(0,0,0,.3), 0 0 0 3px rgba(255,255,255,.12); background: #fff; display: block; }
+.fqwrap.rev .fqflag { box-shadow: 0 6px 0 rgba(0,0,0,.3), 0 0 0 4px var(--good); }
+.fqopts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+.fqopts.kids { grid-template-columns: 1fr; }
+.fqopt { position: relative; min-height: 58px; padding: 10px 8px; border-radius: 16px; border: 2px solid var(--line); background: var(--card2); font-weight: 900; font-size: 16px; line-height: 1.15; }
+.fqopts.kids .fqopt { font-size: 21px; min-height: 64px; }
+.fqopt:not(:disabled):active { transform: scale(.97); background: #26306a; }
+.fqopt:disabled { opacity: 1; }
+.fqopt.ok { background: #17402c; border-color: var(--good); color: #d6ffe7; }
+.fqopt.bad { background: #47202a; border-color: #ff5d73; color: #ffd6dd; }
+.fqopt i { position: absolute; top: -9px; right: 6px; font-style: normal; font-size: 11px; padding: 1px 7px; border-radius: 99px; background: var(--c); color: #0b1020; }
+
+/* ===== Symbol Snap ===== */
+.snwrap .label { margin: 0 0 6px; }
+.sncard { position: relative; width: min(78vw, 33dvh, 330px); aspect-ratio: 1; margin: 0 auto; border-radius: 50%; background: radial-gradient(circle at 40% 35%, #fffdf6, #f1ead8); container-type: inline-size; box-shadow: 0 6px 0 rgba(0,0,0,.3), inset 0 0 0 5px #d9cfb6; }
+.sncard.mine { box-shadow: 0 6px 0 rgba(0,0,0,.3), inset 0 0 0 5px var(--c); }
+.sncard.p0:not(.mine), .sncard.p1:not(.mine) { box-shadow: 0 6px 0 rgba(0,0,0,.3), inset 0 0 0 5px var(--c); }
+.sncard .sym { position: absolute; transform: translate(-50%, -50%) rotate(var(--r)); font-size: calc(var(--sz) * 1cqw); line-height: 1; background: none; border: 0; padding: .06em; border-radius: 50%; touch-action: manipulation; }
+.sncard .sym.hit { background: rgba(81,224,138,.35); box-shadow: 0 0 0 .07em var(--good); animation: snhit .5s ease-out; }
+.sncard .sym.bad { background: rgba(255,93,115,.35); box-shadow: 0 0 0 .07em #ff5d73; animation: snbad .35s; }
+.snwrap.lock .sncard { filter: grayscale(.6) brightness(.8); }
+@keyframes snhit { 0% { transform: translate(-50%, -50%) rotate(var(--r)) scale(1.5); } }
+@keyframes snbad { 25% { margin-left: -6px; } 75% { margin-left: 6px; } }
+
+/* ===== Spot the Difference ===== */
+.spwrap { display: grid; gap: 8px; margin-bottom: 10px; }
+.spimg { display: block; width: 100%; aspect-ratio: 3 / 2; border-radius: 14px; box-shadow: 0 4px 0 rgba(0,0,0,.3); touch-action: manipulation; cursor: pointer; }
+.spimg .things text { pointer-events: none; }
+.spwrap.lock .spimg { filter: grayscale(.5) brightness(.75); }
+.spfound { fill: none; stroke: var(--c); stroke-width: 3.5; }
+.spfound.p1 { stroke: #ffc800; }
+.spmissed { fill: none; stroke: #fff; stroke-width: 3; stroke-dasharray: 6 4; }
+.spx { font-size: 26px; fill: #ff3b55; paint-order: stroke; stroke: #fff; stroke-width: 2px; }
+.spskip { display: block; width: 100%; margin-top: 10px; padding: 10px; font-size: 14px; }
