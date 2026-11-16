@@ -59,3 +59,6 @@ Hard is unbeatable at Noughts & Crosses, very strong at Connect 4 and Dots & Box
 - Hidden things (Battleships fleets, Rock Paper Scissors picks) are never sent out – only the board everyone is allowed to see.
 - Uses the same live connection (Supabase Realtime broadcast) as Buzz In. Nothing is stored on a server.
 - `games.js` holds the rules and computer players for each game, so new games plug in there.
+
+## 📱 Getting back in
+During a game, the host can tap **📱 Join QR** in the top bar to show the QR code and the room code. If someone drops out, they join again with the **same name** and get their old place back, with their wins, seat and turn. A new phone only takes over a name if that player has been offline for 15 seconds or more.

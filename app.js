@@ -165,6 +165,16 @@ function newState(game, room) {
     level: PREF.level, acks: {}, opts: { deck: PREF.deck, kids: !!PREF.kids } };
 }
 const pl = id => S && S.players.find(p => p.id === id);
+// Same name on a new phone = your old place back (wins, seat and turn). Renames the old id everywhere in the game.
+function rebindId(root, a, b) {
+  const seen = new Set();
+  (function walk(o) {
+    if (!o || typeof o !== "object" || seen.has(o)) return; seen.add(o);
+    if (Array.isArray(o)) { for (let i = 0; i < o.length; i++) { if (o[i] === a) o[i] = b; else walk(o[i]); } return; }
+    const pr = Object.getPrototypeOf(o); if (pr !== Object.prototype && pr !== null) return;
+    for (const k of Object.keys(o)) { const v = o[k]; if (v === a) o[k] = b; else walk(v); if (k === a) { o[b] = o[a]; delete o[a]; } }
+  })(root);
+}
 const nameOf = id => (pl(id) || {}).name || "Player";
 const mySeat = () => S ? S.seats.indexOf(ME.id) : -1;
 const G = () => GAMES[S.game];
@@ -301,8 +311,13 @@ function hostMsg(m) {
   lastHeard = Date.now();
   if (m.t === "hp") return hkPadIn(m);
   if (m.t === "rtc") return rtcOnMsg(m);
+  if (m.pid) { const sp = pl(m.pid); if (sp) sp.seen = Date.now(); }
   if (m.t === "hello") {
     let p = pl(m.pid);
+    if (!p && cleanName(m.name)) { // dropped out and back on another phone? same name, offline 15s+ (never the host)
+      const n = cleanName(m.name).toLowerCase(), old = S.players.find(q => q.id !== ME.id && q.name.toLowerCase() === n && Date.now() - (q.seen || 0) > 15000);
+      if (old) { rebindId(S, old.id, m.pid); p = pl(m.pid); p.seen = Date.now(); toast(p.name + " is back"); }
+    }
     if (!p) {
       if (S.players.length >= MAX_PLAYERS) { T.send({ t: "full", pid: m.pid }); return; }
       p = { id: m.pid, name: cleanName(m.name) || "Player " + (S.players.length + 1), wins: 0 };
@@ -659,6 +674,7 @@ function inviteBlock() {
     <div class="qrwrap">${qrImg(joinURL(S.room))}</div>
     <div class="small mut">or enter code</div>
     <div class="roomcode">${esc(S.room)}</div>
+    <div class="small mut">Dropped out? Join again with the same name to get your place back.</div>
     <div class="gap"></div>
     <button class="btn alt" data-act="share">📤 Send the invite link</button>
   </div>`;
@@ -1463,7 +1479,7 @@ function renderGame() {
   const draws = S.draws ? `<div class="center small mut" style="margin-top:-4px;margin-bottom:8px">${S.draws} draw${S.draws > 1 ? "s" : ""}</div>` : "";
 
   app.innerHTML = `
-  <div class="top"><span class="t">${esc(g.name)}${g.word && S.board && S.board.kids ? ` <span class="small mut">· Kids</span>` : ""}${MODE === "cpu" ? ` <span class="small mut">· ${LEVELS[S.level]}</span>` : ""}</span><span class="row" style="flex:none;gap:6px">${gamesBtn()}${MODE === "host" ? `<button class="iconbtn" data-act="qr">${showQR ? "Hide QR" : "➕ Invite"}</button>` : ""}${soundBtn()}</span></div>
+  <div class="top"><span class="t">${esc(g.name)}${g.word && S.board && S.board.kids ? ` <span class="small mut">· Kids</span>` : ""}${MODE === "cpu" ? ` <span class="small mut">· ${LEVELS[S.level]}</span>` : ""}</span><span class="row" style="flex:none;gap:6px">${gamesBtn()}${MODE === "host" ? `<button class="iconbtn" data-act="qr">${showQR ? "Hide QR" : "📱 Join QR"}</button>` : ""}${soundBtn()}</span></div>
   ${connBanner()}${suggestBanner()}${suggestPanel()}
   ${MODE === "host" && showQR ? inviteBlock() : ""}
   <div class="bar">${chip(0, "")}<div class="score"><span><b>${w0}</b> – <b>${w1}</b></span></div>${chip(1, "r")}</div>
