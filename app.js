@@ -27,7 +27,7 @@ const LEVELS = { easy: "Easy", medium: "Medium", hard: "Hard" };
 // ===== WHO AM I =====
 const ME = { id: ls.get("h2h_pid", null), name: ls.get("h2h_name", "") };
 if (!ME.id) { ME.id = uid(); ls.set("h2h_pid", ME.id); }
-const PREF = Object.assign({ game: "ttt", level: "medium", sound: true, deck: "animals" }, ls.get("h2h_pref", {}));
+const PREF = Object.assign({ game: "ttt", level: "medium", sound: true, deck: "animals", kids: false }, ls.get("h2h_pref", {}));
 const savePref = () => ls.set("h2h_pref", PREF);
 
 
@@ -162,7 +162,7 @@ function sendState() { if (T && S) T.send({ t: "state", s: pub(S) }); }
 function newState(game, room) {
   return { sid: uid(), v: 0, room, game, host: ME.id, players: [], seats: [null, null], queue: [], phase: "lobby",
     board: null, sec: {}, turn: 0, starter: 0, result: null, last: null, lastBy: -1, fx: null, moves: 0, round: 0, draws: 0,
-    level: PREF.level, acks: {}, opts: { deck: PREF.deck } };
+    level: PREF.level, acks: {}, opts: { deck: PREF.deck, kids: !!PREF.kids } };
 }
 const pl = id => S && S.players.find(p => p.id === id);
 const nameOf = id => (pl(id) || {}).name || "Player";
@@ -227,7 +227,7 @@ function maybeCPU() {
     if (MODE !== "cpu" || !S || S.phase !== "play" || !G().waiting(S, cs) || ttRevealPending()) return;
     const mv = G().ai(S, cs, S.level);
     if (applyMove("cpu", mv, S.turn >= 0 ? S.moves : null)) { afterMove(); commit(); }
-  }, (placing ? 250 : S.game === "dots" ? 420 + Math.random() * 300 : 520 + Math.random() * 380) + extra);
+  }, (G().aiDelay ? G().aiDelay(S, S.level) : placing ? 250 : S.game === "dots" ? 420 + Math.random() * 300 : 520 + Math.random() * 380) + extra);
 }
 
 // ===== FEEDBACK =====
@@ -515,6 +515,9 @@ const GAME_ICON = {
   hockey: `<svg viewBox="0 0 120 104"><rect x="22" y="4" width="76" height="96" rx="16" fill="#123a8a" stroke="#c7d2fe" stroke-width="4"/><line x1="24" y1="52" x2="96" y2="52" stroke="#ff5d73" stroke-width="2.5" stroke-dasharray="5 4"/><rect x="46" y="2" width="28" height="5" fill="#050914"/><rect x="46" y="97" width="28" height="5" fill="#050914"/><circle cx="60" cy="24" r="9" fill="#ffd23f"/><circle cx="52" cy="80" r="9" fill="#ff5d73"/><circle cx="70" cy="58" r="5" fill="#f1f5ff"/></svg>`,
   golf: `<svg viewBox="0 0 120 104"><rect x="6" y="6" width="108" height="92" rx="14" fill="#46ad5f" stroke="#a46a3c" stroke-width="6"/><circle cx="84" cy="34" r="8" fill="#0d1a10"/><line x1="84" y1="34" x2="84" y2="8" stroke="#eee" stroke-width="2.5"/><path d="M84 8 L100 13 L84 18Z" fill="#ff5d73"/><circle cx="36" cy="76" r="7" fill="#fff" stroke="#ff5d73" stroke-width="2"/><path d="M40 70 Q60 50 78 40" stroke="#fff" stroke-width="2" stroke-dasharray="3 4" fill="none"/></svg>`,
   wi: `<div class="wiico">${[3, 14, 18].map(i => `<i>${faceSVG(i)}</i>`).join("")}</div>`,
+  hm: `<svg viewBox="0 0 120 104"><path d="M14 96H70M30 96V10H84V22M30 30L48 10" stroke="#c7d2fe" stroke-width="6" fill="none" stroke-linecap="round"/><circle cx="84" cy="34" r="10" fill="none" stroke="#ffd23f" stroke-width="5"/><path d="M84 44V66M84 50L72 60M84 50L96 60" stroke="#ffd23f" stroke-width="5" stroke-linecap="round" fill="none"/><g font-family="Fredoka" font-weight="700" font-size="17" fill="#ff5d73"><text x="56" y="92">A</text><text x="98" y="92">E</text></g><path d="M74 96H90M100 96" stroke="#eef2ff" stroke-width="3"/></svg>`,
+  ws: `<svg viewBox="0 0 120 104"><rect x="8" y="4" width="104" height="96" rx="12" fill="#f4f1e8"/><rect x="16" y="15" width="88" height="20" rx="10" fill="#ff5d73" opacity=".45"/><path d="M28 50L92 92" stroke="#ffd23f" stroke-width="18" stroke-linecap="round" opacity=".55"/><g font-family="Fredoka" font-weight="700" font-size="15" fill="#1b2140" text-anchor="middle">${["CATZ", "QOLD", "MKNE", "BUSG"].map((r, y) => [...r].map((ch, x) => `<text x="${28 + x * 21}" y="${31 + y * 21}">${ch}</text>`).join("")).join("")}</g></svg>`,
+  cw: `<svg viewBox="0 0 120 104">${[[0,1],[1,1],[2,1],[3,1],[4,1],[2,0],[2,2],[2,3],[4,2],[4,3],[0,3],[1,3],[3,3]].map(([x,y]) => `<rect x="${8 + x * 21}" y="${8 + y * 21}" width="20" height="20" fill="#f4f1e8" rx="2"/>`).join("")}<g font-family="Fredoka" font-weight="700" font-size="14" fill="#1b2140" text-anchor="middle"><text x="18" y="44">C</text><text x="39" y="44">A</text><text x="60" y="44">T</text></g><rect x="50" y="8" width="20" height="20" fill="#ffd23f" rx="2"/><text x="60" y="23" font-family="Fredoka" font-weight="700" font-size="14" text-anchor="middle" fill="#1b2140">S</text></svg>`,
   tt: `<div class="ttico"><i style="background-image:url(img/cards/nature/lion.webp)"></i><i style="background-image:url(img/cards/dinosaurs/tyrannosaurus-rex.webp)"></i></div>`,
 };
 
@@ -582,6 +585,7 @@ function renderHome() {
     <p class="label">Pick a game</p>
     ${gamePicker(PREF.game)}
     ${PREF.game === "tt" ? `<div class="gap"></div><p class="label">Card Clash theme</p>${deckPicker(PREF.deck, "data-deck")}` : ""}
+    ${WORDG.includes(PREF.game) ? `<div class="gap"></div><p class="label">Words</p>${kidsSeg(PREF.kids, "data-kids")}` : ""}
   </div>
   <button class="btn" data-act="host">📱 Play a friend<span class="sub">Get a QR code for them to scan</span></button>
   <div class="card" style="margin-top:22px">
@@ -676,7 +680,7 @@ function renderLobby() {
     ${n > 2 ? `<p class="small mut" style="margin:10px 0 0">Winner stays on. Everyone else waits their turn.</p>` : ""}
   </div>
   ${host ? `
-    <div class="card"><p class="label">Game</p>${gamePicker(S.game, "data-setgame")}${S.game === "tt" ? `<div class="gap"></div><p class="label">Theme</p>${deckPicker(S.opts && S.opts.deck, "data-setdeck")}` : ""}</div>
+    <div class="card"><p class="label">Game</p>${gamePicker(S.game, "data-setgame")}${S.game === "tt" ? `<div class="gap"></div><p class="label">Theme</p>${deckPicker(S.opts && S.opts.deck, "data-setdeck")}` : ""}${WORDG.includes(S.game) ? `<div class="gap"></div><p class="label">Words</p>${kidsSeg(S.opts && S.opts.kids, "data-setkids")}` : ""}</div>
     <button class="btn green" data-act="start" ${n < 2 ? "disabled" : ""}>${n < 2 ? `<span class="wait">⏳</span> Waiting for someone to join` : "▶ Start the game"}</button>` : ""}
   <div class="foot"><button class="iconbtn" data-act="leave">Leave</button></div>`;
 }
@@ -1384,6 +1388,7 @@ function renderGame() {
     if (S.game === "dots" && !(over && S.result.w === seat)) sub = `${S.board.score[seat]} box${S.board.score[seat] === 1 ? "" : "es"}`;
     if (S.game === "golf" && S.phase === "play") { const bl = S.board.balls[seat]; sub = bl.in ? (bl.gaveUp ? "picked up" : `in ✓ ${bl.strokes}`) : `${bl.strokes} shot${bl.strokes === 1 ? "" : "s"}`; }
     if (S.game === "tt" && !(over && S.result.w === seat)) sub = `${S.board.count[seat]} card${S.board.count[seat] === 1 ? "" : "s"}`;
+    if (WORDG.includes(S.game) && S.board && !(over && S.result.w === seat)) { const n = S.board.score[seat]; sub = S.game === "ws" ? `${n} found` : `${n} word${n === 1 ? "" : "s"}`; }
     return `<div class="chip p${seat} ${side} ${w && !simul ? "turn" : ""}"><span class="mk">${markFor(S.game, seat)}</span><span class="nm"><b>${label}</b><span>${sub}&nbsp;</span></span></div>`;
   };
   const w0 = (pl(S.seats[0]) || {}).wins || 0, w1 = (pl(S.seats[1]) || {}).wins || 0;
@@ -1402,11 +1407,12 @@ function renderGame() {
     else if (myTurn) {
       cls = "me";
       const wiPick = S.game === "wi" && S.board.stage === "pick";
-      status = bsPlace ? "Place your fleet" : wiPick ? "Choose your mystery person" : S.game === "rps" ? "Pick your move" : S.game === "tt" ? "Pick a stat" : S.game === "wi" ? "Your turn: ask a question" : S.game === "golf" ? "Your shot" : "Your turn";
+      status = bsPlace ? "Place your fleet" : wiPick ? "Choose your mystery person" : S.game === "rps" ? "Pick your move" : S.game === "tt" ? "Pick a stat" : S.game === "wi" ? "Your turn: ask a question" : S.game === "golf" ? "Your shot" : S.game === "hm" ? (HM.solving ? "Fill in the word" : "Your turn: pick a letter") : S.game === "ws" ? "Find the words! 🔎" : S.game === "cw" ? "Your turn: answer a clue" : "Your turn";
       if (S.game === "dots" && S.lastBy === me && S.fx === "box") sub = "Box! Go again";
       if (S.game === "golf" && S.board.balls[1 - me].in && !S.board.balls[1 - me].gaveUp) sub = `${esc(nameOf(S.seats[1 - me]))} is in with ${S.board.balls[1 - me].strokes}. Your shot`;
       if (S.game === "bs" && S.last && S.last.seat !== me) sub = S.last.sunk ? "They sank your ship!" : S.last.hit ? "They hit you!" : "They missed";
-    } else if (S.turn < 0) {
+    } else if (S.game === "ws") status = "Find the words! 🔎";
+    else if (S.turn < 0) {
       const wait = [0, 1].filter(s => g.waiting(S, s) && s !== me).map(s => S.seats[s] === "cpu" ? "the computer" : esc(nameOf(S.seats[s])));
       status = wait.length ? `Waiting for ${wait.join(" and ")}…` : "…";
       if (bsPlace && me >= 0) sub = "They're placing their ships";
@@ -1428,10 +1434,13 @@ function renderGame() {
     if (S.game === "wi" && S.board.reveal) sub = `${esc(nameOf(S.seats[0]))} was ${esc(GAMES.wi.PEOPLE[S.board.reveal[0]].name)}, ${esc(nameOf(S.seats[1]))} was ${esc(GAMES.wi.PEOPLE[S.board.reveal[1]].name)}`;
     if (S.game === "hockey") sub = `${S.board.score[0]} – ${S.board.score[1]}`;
     if (S.game === "golf") { const t = sd => S.board.scores[sd].reduce((x, y) => x + y, 0); sub = `Total strokes ${t(0)} – ${t(1)} (lowest wins)`; }
+    if (S.game === "hm") sub = `Words ${S.board.score[0]} – ${S.board.score[1]}${S.board.prev ? `. The last word was ${S.board.prev.word} ${S.board.prev.pic || ""}` : ""}`;
+    if (S.game === "ws") sub = `Words found ${S.board.score[0]} – ${S.board.score[1]}`;
+    if (S.game === "cw") sub = `Words answered ${S.board.score[0]} – ${S.board.score[1]}`;
     if (S.game === "tt") sub = S.board.count[0] && S.board.count[1] ? `Most cards after ${GAMES.tt.MAX_ROUNDS} rounds: ${S.board.count[0]} – ${S.board.count[1]}` : "Won every card";
   }
 
-  const board = { ttt: boardTTT, c4: boardC4, dots: boardDots, bs: boardBS, rps: boardRPS, tt: boardTT, wi: boardWI, golf: boardGolf,
+  const board = { ttt: boardTTT, c4: boardC4, dots: boardDots, bs: boardBS, rps: boardRPS, tt: boardTT, wi: boardWI, golf: boardGolf, hm: boardHM, ws: boardWS, cw: boardCW,
     hockey: () => `<div class="hkfinal"><span class="p0">${S.board.score[0]}</span><em>–</em><span class="p1">${S.board.score[1]}</span></div>` }[S.game](c);
 
   let after = "";
@@ -1446,7 +1455,7 @@ function renderGame() {
       ${me >= 0 || host ? `<button class="btn green" data-act="again">🔁 Play again</button>` : `<p class="center mut">Waiting for the next game…</p>`}
       ${MODE === "host" ? `<button class="btn" data-act="tolobby">🎮 Choose another game</button>` : ""}
       ${MODE === "guest" ? `<button class="btn" data-act="opensuggest">💡 Suggest another game</button>` : ""}
-      ${MODE === "cpu" ? `<div class="card"><p class="label">Switch game</p>${gamePicker(S.game, "data-setgame")}${S.game === "tt" ? `<div class="gap"></div><p class="label">Card Clash theme</p>${deckPicker(S.opts && S.opts.deck, "data-setdeck")}` : ""}${MODE === "cpu" ? `<div class="gap"></div><p class="label">Computer level</p>${levelSeg(S.level, "data-setlevel")}` : ""}</div>` : ""}
+      ${MODE === "cpu" ? `<div class="card"><p class="label">Switch game</p>${gamePicker(S.game, "data-setgame")}${S.game === "tt" ? `<div class="gap"></div><p class="label">Card Clash theme</p>${deckPicker(S.opts && S.opts.deck, "data-setdeck")}` : ""}${WORDG.includes(S.game) ? `<div class="gap"></div><p class="label">Words</p>${kidsSeg(S.opts && S.opts.kids, "data-setkids")}` : ""}${MODE === "cpu" ? `<div class="gap"></div><p class="label">Computer level</p>${levelSeg(S.level, "data-setlevel")}` : ""}</div>` : ""}
     </div>`;
   }
 
@@ -1454,7 +1463,7 @@ function renderGame() {
   const draws = S.draws ? `<div class="center small mut" style="margin-top:-4px;margin-bottom:8px">${S.draws} draw${S.draws > 1 ? "s" : ""}</div>` : "";
 
   app.innerHTML = `
-  <div class="top"><span class="t">${esc(g.name)}${MODE === "cpu" ? ` <span class="small mut">· ${LEVELS[S.level]}</span>` : ""}</span><span class="row" style="flex:none;gap:6px">${gamesBtn()}${MODE === "host" ? `<button class="iconbtn" data-act="qr">${showQR ? "Hide QR" : "➕ Invite"}</button>` : ""}${soundBtn()}</span></div>
+  <div class="top"><span class="t">${esc(g.name)}${g.word && S.board && S.board.kids ? ` <span class="small mut">· Kids</span>` : ""}${MODE === "cpu" ? ` <span class="small mut">· ${LEVELS[S.level]}</span>` : ""}</span><span class="row" style="flex:none;gap:6px">${gamesBtn()}${MODE === "host" ? `<button class="iconbtn" data-act="qr">${showQR ? "Hide QR" : "➕ Invite"}</button>` : ""}${soundBtn()}</span></div>
   ${connBanner()}${suggestBanner()}${suggestPanel()}
   ${MODE === "host" && showQR ? inviteBlock() : ""}
   <div class="bar">${chip(0, "")}<div class="score"><span><b>${w0}</b> – <b>${w1}</b></span></div>${chip(1, "r")}</div>
@@ -1467,9 +1476,170 @@ function renderGame() {
   if (S.game === "golf") { const cv = document.getElementById("golfcv"); if (cv) { golfPointer(cv); drawGolf(); golfHitUI(); } }
 }
 
+// ===== WORD GAMES: Hangman, Word Search, Crossword =====
+const WORDG = ["hm", "ws", "cw"];
+function kidsSeg(on, attr) {
+  return `<div class="seg">${[["0", "📚 Standard"], ["1", "🧒 Kids"]].map(([v, t]) => `<button class="${(on ? "1" : "0") === v ? "on" : ""}" ${attr}="${v}">${t}</button>`).join("")}</div>`;
+}
+const KB_ROWS = ["ABCDEFG", "HIJKLMN", "OPQRSTU", "VWXYZ"];
+function keyboard(state) { // state(L) gives the key's classes; "off" disables it
+  return `<div class="kbd">${KB_ROWS.map(r => `<div>${[...r].map(L => { const st = state(L) || ""; return `<button data-key="${L}" class="${st}" ${/\boff\b/.test(st) ? "disabled" : ""}>${L}</button>`; }).join("")}</div>`).join("")}</div>`;
+}
+const who = seat => S.seats[seat] === ME.id ? "You" : S.seats[seat] === "cpu" ? "The computer" : esc(nameOf(S.seats[seat]));
+
+// ----- Hangman -----
+let HM = { k: "", solving: false, typed: [] };
+function hmPic(b) {
+  if (b.kids) { // a bunch of balloons; each wrong letter pops one
+    const n = b.max, cols = ["#ff5d73", "#ffd23f", "#51e08a", "#6c8cff", "#ff9f43", "#c56cf0"];
+    let s = "";
+    for (let i = 0; i < n; i++) {
+      const a = (-62 + (124 / (n - 1)) * i) * Math.PI / 180, row = i % 2, x = 110 + Math.sin(a) * (70 + row * 18), y = 92 - Math.cos(a) * (46 + row * 20);
+      const popped = i >= n - b.wrong;
+      s += popped ? `<text x="${x}" y="${y + 5}" text-anchor="middle" font-size="14" opacity=".55">💥</text>`
+        : `<path d="M${x} ${y + 15} Q${(x + 110) / 2} ${y + 60} 110 152" stroke="#c7cde8" stroke-width="1" fill="none"/><ellipse cx="${x}" cy="${y}" rx="12" ry="15" fill="${cols[i % cols.length]}"/><ellipse cx="${x - 4}" cy="${y - 6}" rx="3" ry="5" fill="rgba(255,255,255,.55)"/>`;
+    }
+    const sad = b.wrong >= b.max - 2;
+    return `<svg class="hmpic" viewBox="0 0 220 200">${s}<circle cx="110" cy="170" r="20" fill="#ffd8a8"/><circle cx="103" cy="166" r="2.4" fill="#2a2140"/><circle cx="117" cy="166" r="2.4" fill="#2a2140"/><path d="M102 ${sad ? 179 : 175} Q110 ${sad ? 172 : 182} 118 ${sad ? 179 : 175}" stroke="#2a2140" stroke-width="2" fill="none" stroke-linecap="round"/></svg>`;
+  }
+  const P = ["M20 190 H150", "M50 190 V18", "M50 18 H140 M50 48 L80 18", "M140 18 V44", "C", "M140 79 V130", "M140 92 L118 116 M140 92 L162 116", "M140 130 L122 164 M140 130 L158 164"];
+  return `<svg class="hmpic" viewBox="0 0 220 200">${P.map((d, i) => { const on = i < b.wrong, st = on ? `stroke="#eef2ff" stroke-width="6"` : `stroke="rgba(255,255,255,.12)" stroke-width="4" stroke-dasharray="6 6"`;
+    return d === "C" ? `<circle cx="140" cy="61" r="17" fill="none" ${st}/>` : `<path d="${d}" fill="none" stroke-linecap="round" ${st}/>`; }).join("")}</svg>`;
+}
+function boardHM(c) {
+  const b = S.board, can = c.myTurn && !pending, key = S.sid + ":" + S.round + ":" + b.n + ":" + S.moves;
+  if (HM.k !== key) HM = { k: key, solving: false, typed: [] };
+  if (!can) HM.solving = false;
+  const blanks = b.shown.map((x, i) => x ? -1 : i).filter(i => i >= 0);
+  const word = `<div class="hmword ${b.len > 9 ? "long" : ""}">${b.shown.map((ch, i) => { const t = HM.solving && !ch ? HM.typed[blanks.indexOf(i)] : ""; return `<span class="${ch ? "on" : t ? "ty" : ""}">${ch || t || ""}</span>`; }).join("")}</div>`;
+  const L = S.last && S.last.n === b.n ? S.last : null;
+  let line = "";
+  if (b.prev && b.prev.n === b.n - 1 && !L && S.phase === "play") line = `<div class="wline good">It was <b>${b.prev.word}</b> ${b.prev.pic || ""} · ${b.prev.w == null ? "nobody got it" : b.prev.w === c.me ? "you got it! 🎉" : who(b.prev.w) + " got it"}</div>`;
+  else if (L && L.letter) line = `<div class="wline ${L.hits ? "good" : "bad"}">${who(L.seat)} picked ${L.letter}: ${L.hits ? `${L.hits === 1 ? "it's in!" : `${L.hits} of them!`}` : "not in the word"}</div>`;
+  else if (L && L.solve) line = `<div class="wline bad">${who(L.seat)} guessed ${L.solve}. Not quite!</div>`;
+  const lives = b.kids ? `${b.max - b.wrong} balloon${b.max - b.wrong === 1 ? "" : "s"} left` : `${b.max - b.wrong} wrong guess${b.max - b.wrong === 1 ? "" : "es"} left`;
+  const head = `<div class="hmcat"><span>${b.ic} ${esc(b.cat)} · ${b.len} letters</span>${b.pic ? `<span class="hmhint">Hint: ${b.pic}</span>` : ""}</div>`;
+  let keys;
+  if (HM.solving) keys = keyboard(() => HM.typed.length >= blanks.length ? "off" : "") +
+    `<div class="krow"><button class="btn alt" data-act="hmcancel">Cancel</button><button class="btn alt" data-act="hmback">⌫</button><button class="btn green" data-act="hmcheck" ${HM.typed.length < blanks.length ? "disabled" : ""}>✓ That's it</button></div>`;
+  else keys = keyboard(Lt => (b.used[Lt] === 1 ? "hit off" : b.used[Lt] === 0 ? "miss off" : can ? "" : "off")) +
+    (can ? `<div class="krow"><button class="btn alt" data-act="hmsolve">💡 I know the word!</button></div>` : "");
+  const sc = `<div class="rscore"><b class="p0">${b.score[0]}</b><span>first to ${b.target} words</span><b class="p1">${b.score[1]}</b></div>`;
+  return `${line}${head}<div class="hmstage">${hmPic(b)}</div>${word}<p class="center small mut" style="margin:4px 0 8px">${lives}</p>${S.phase === "play" ? keys : ""}${sc}`;
+}
+
+// ----- Word Search -----
+let WS = { k: "", a: null, z: null, drag: null, msg: null };
+const wsCanPlay = () => !!S && S.game === "ws" && S.phase === "play" && mySeat() >= 0 && waiting(mySeat()) && !pending;
+function boardWS(c) {
+  const b = S.board, N = b.N, key = S.sid + ":" + S.round;
+  if (WS.k !== key) WS = { k: key, a: null, z: null, drag: null, msg: null };
+  const ctr = k => [k % N + .5, Math.floor(k / N) + .5];
+  const seg = (a, z, cls, id) => { const [x1, y1] = ctr(a), [x2, y2] = ctr(z); return `<line ${id ? `id="${id}"` : ""} class="${cls}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`; };
+  const lines = b.words.filter(w => w.line).map(w => seg(w.line[0], w.line[1], "p" + w.by)).join("") + seg(WS.a ?? 0, WS.z ?? WS.a ?? 0, "sel" + (WS.a == null ? " hide" : ""), "wsprev");
+  const msg = WS.msg && Date.now() < WS.msg.until ? `<div class="wline bad">${WS.msg.t}</div>` : S.last && S.last.seat !== c.me && S.phase === "play" ? `<div class="wline">${who(S.last.seat)} found ${b.words[S.last.i].pic || ""} ${b.words[S.last.i].w}</div>` : "";
+  return `${msg}<div class="hmcat"><span>${b.ic} ${esc(b.cat)}</span><span class="mut">${b.words.filter(w => w.by == null).length} left</span></div>
+    <div class="wswrap ${b.kids ? "kids" : ""}" style="--n:${N}"><svg class="wslines" viewBox="0 0 ${N} ${N}">${lines}</svg>
+    <div class="wsgrid">${[...b.g].map((ch, i) => `<span data-wsc="${i}" class="${WS.a === i ? "a" : ""}">${ch}</span>`).join("")}</div></div>
+    <div class="wslist ${b.kids ? "kids" : ""}">${b.words.map(w => `<span class="${w.by != null ? "f p" + w.by : ""}">${w.pic ? `<i>${w.pic}</i>` : ""}${w.w}</span>`).join("")}</div>
+    ${S.phase === "play" ? `<p class="center small mut" style="margin:8px 0 0">${b.kids ? "Tap the first letter, then the last letter" : "Tap the first letter then the last, or drag across. Words can go any way, even backwards"}</p>` : ""}`;
+}
+function wsPaint() {
+  document.querySelectorAll(".wsgrid [data-wsc].a").forEach(e => e.classList.remove("a"));
+  if (WS.a != null) { const e = document.querySelector(`[data-wsc="${WS.a}"]`); if (e) e.classList.add("a"); }
+  const ln = document.getElementById("wsprev"), N = S && S.board && S.board.N; if (!ln || !N) return;
+  if (WS.a == null) { ln.classList.add("hide"); return; }
+  const z = WS.z != null && GAMES.ws.line(N, WS.a, WS.z) ? WS.z : WS.a;
+  ln.classList.remove("hide"); ln.setAttribute("x1", WS.a % N + .5); ln.setAttribute("y1", Math.floor(WS.a / N) + .5); ln.setAttribute("x2", z % N + .5); ln.setAttribute("y2", Math.floor(z / N) + .5);
+}
+function wsTry(a, z) {
+  WS.a = WS.z = null;
+  const b = S.board, i = GAMES.ws.match(b, a, z);
+  if (i >= 0) return myMove({ ws: [a, z] });
+  WS.msg = { t: GAMES.ws.line(b.N, a, z) ? "That's not one of the words" : "Words go in a straight line", until: Date.now() + 1800 };
+  Snd.tone(240, .12, "triangle", .1); render(); setTimeout(() => { if (S && S.game === "ws") render(); }, 1850);
+}
+const wsCellAt = (x, y) => { const el = document.elementFromPoint(x, y), t = el && el.closest && el.closest("[data-wsc]"); return t ? Number(t.dataset.wsc) : null; };
+window.addEventListener("pointerdown", e => {
+  const t = e.target.closest && e.target.closest("[data-wsc]"); if (!t || !wsCanPlay()) return;
+  e.preventDefault(); const i = Number(t.dataset.wsc);
+  if (WS.a != null && WS.a !== i) return wsTry(WS.a, i); // second tap
+  if (WS.a === i) { WS.a = WS.z = null; return wsPaint(); } // tap the same letter again to cancel
+  WS.a = i; WS.z = null; WS.drag = { id: e.pointerId, moved: false }; wsPaint();
+});
+window.addEventListener("pointermove", e => {
+  if (!WS.drag || e.pointerId !== WS.drag.id) return;
+  const i = wsCellAt(e.clientX, e.clientY);
+  if (i != null && i !== WS.z) { WS.z = i === WS.a ? null : i; if (WS.z != null) WS.drag.moved = true; wsPaint(); }
+});
+window.addEventListener("pointerup", e => {
+  if (!WS.drag || e.pointerId !== WS.drag.id) return;
+  const moved = WS.drag.moved; WS.drag = null; const i = wsCellAt(e.clientX, e.clientY);
+  if (moved && i != null && i !== WS.a && WS.a != null) wsTry(WS.a, i); else if (moved) { WS.z = null; wsPaint(); }
+});
+window.addEventListener("pointercancel", () => { WS.drag = null; });
+
+// ----- Crossword -----
+let CW = { k: "", sel: null, typed: [] };
+function boardCW(c) {
+  const b = S.board, can = c.myTurn && !pending, key = S.sid + ":" + S.round, cells = wd => GAMES.cw.cells(b, wd);
+  if (CW.k !== key) CW = { k: key, sel: null, typed: [] };
+  if (CW.sel != null && (!can || b.words[CW.sel].by != null)) { CW.sel = null; CW.typed = []; }
+  const sel = CW.sel != null ? b.words[CW.sel] : null, selCells = sel ? cells(sel) : [], open = selCells.filter(k => !b.letters[k]);
+  const grid = `<div class="cwgrid ${b.kids ? "kids" : ""}" style="--w:${b.w}">${b.mask.map((m, k) => {
+    if (!m) return "<i></i>";
+    const t = sel && !b.letters[k] ? CW.typed[open.indexOf(k)] || "" : "", o = b.own[k];
+    return `<span data-cwcell="${k}" class="${o === 0 ? "p0" : o === 1 ? "p1" : o === -1 ? "gift" : ""} ${selCells.includes(k) ? "sel" : ""} ${t ? "ty" : ""}">${b.nums[k] ? `<em>${b.nums[k]}</em>` : ""}${b.letters[k] || t}</span>`;
+  }).join("")}</div>`;
+  const L = S.last, wn = i => `${b.words[i].n} ${b.words[i].d ? "down" : "across"}`;
+  let line = "";
+  if (L && S.phase === "play") {
+    if (L.pass) line = `<div class="wline">${who(L.seat)} passed${L.gift != null ? ". You're both stuck, so here's a free letter ✨" : ""}</div>`;
+    else if (L.ok) line = `<div class="wline good">${who(L.seat)} got ${wn(L.i)}: <b>${L.word}</b> ✓</div>`;
+    else line = `<div class="wline bad">${who(L.seat)} tried ${L.word} for ${wn(L.i)} ✗</div>`;
+  }
+  const clue = (wd, i) => `<button data-cwclue="${i}" class="${wd.by != null ? "done " + (wd.by === "auto" ? "" : "p" + wd.by) : ""} ${CW.sel === i ? "on" : ""}" ${!can || wd.by != null ? "disabled" : ""}>
+    <b>${wd.n}</b><span>${wd.pic ? `<i>${wd.pic}</i>` : ""}${esc(wd.clue)} <small>(${wd.len})</small>${wd.by != null ? `<em>${cells(wd).map(k => b.letters[k]).join("")}</em>` : ""}</span></button>`;
+  const list = d => b.words.map((wd, i) => wd.d === d ? clue(wd, i) : "").join("");
+  let ctl = "";
+  if (S.phase === "play" && can) {
+    ctl = sel ? `<div class="cwasking">${sel.pic ? `<i>${sel.pic}</i>` : ""}<b>${wn(CW.sel)}</b> ${esc(sel.clue)}</div>${keyboard(() => CW.typed.length >= open.length ? "off" : "")}
+      <div class="krow"><button class="btn alt" data-act="cwcancel">Back</button><button class="btn alt" data-act="cwback">⌫</button><button class="btn green" data-act="cwcheck" ${CW.typed.length < open.length ? "disabled" : ""}>✓ Answer</button></div>`
+      : `<div class="krow"><p class="small mut" style="flex:2;margin:0;align-self:center">Pick a clue, or tap a square</p><button class="btn alt" data-act="cwpass">Pass</button></div>`;
+  }
+  const sc = `<div class="rscore"><b class="p0">${b.score[0]}</b><span>words answered</span><b class="p1">${b.score[1]}</b></div>`;
+  return `${line}${grid}${ctl}<div class="cwclues"><div><p class="label">Across</p>${list(0)}</div><div><p class="label">Down</p>${list(1)}</div></div>${sc}`;
+}
+function cwTapCell(k) {
+  const b = S.board, hits = b.words.map((wd, i) => i).filter(i => b.words[i].by == null && GAMES.cw.cells(b, b.words[i]).includes(k));
+  if (!hits.length) return;
+  const at = hits.indexOf(CW.sel);
+  CW.sel = hits[at < 0 ? 0 : (at + 1) % hits.length]; CW.typed = []; render();
+}
+function wordKey(L) {
+  if (S.game === "hm") {
+    if (!HM.solving) return myMove({ letter: L });
+    const blanks = S.board.shown.filter(x => !x).length; if (HM.typed.length < blanks) { HM.typed.push(L); Snd.pick(); } return render();
+  }
+  if (S.game === "cw" && CW.sel != null) {
+    const b = S.board, open = GAMES.cw.cells(b, b.words[CW.sel]).filter(k => !b.letters[k]).length;
+    if (CW.typed.length < open) { CW.typed.push(L); Snd.pick(); } return render();
+  }
+}
+function cwAnswer() {
+  const b = S.board, wd = b.words[CW.sel], t = CW.typed.slice();
+  const word = GAMES.cw.cells(b, wd).map(k => b.letters[k] || t.shift()).join("");
+  const i = CW.sel; CW.sel = null; CW.typed = [];
+  myMove({ cw: i, word });
+}
+function hmAnswer() {
+  const t = HM.typed.slice(), word = S.board.shown.map(x => x || t.shift()).join("");
+  HM.solving = false; HM.typed = []; myMove({ solve: word });
+}
+
 // ===== TAPS =====
 app.addEventListener("click", e => {
-  const el = e.target.closest("[data-suggest],[data-act],[data-mv],[data-fire],[data-rps],[data-tt],[data-wiask],[data-wiguess],[data-deck],[data-setdeck],[data-pickgame],[data-setgame],[data-level],[data-setlevel],[data-kick]");
+  const el = e.target.closest("[data-suggest],[data-act],[data-mv],[data-fire],[data-rps],[data-tt],[data-wiask],[data-wiguess],[data-deck],[data-setdeck],[data-pickgame],[data-setgame],[data-level],[data-setlevel],[data-kick],[data-key],[data-cwclue],[data-cwcell],[data-kids],[data-setkids]");
   if (!el) return;
   const d = el.dataset;
   if (d.suggest) { if (MODE === "guest" && T) { T.send({ t: "suggest", pid: ME.id, game: d.suggest }); SUGGEST = false; toast(`Suggested ${GAMES[d.suggest].name} to ${nameOf(S.host)}`); render(); } return; }
@@ -1477,6 +1647,11 @@ app.addEventListener("click", e => {
   if (d.fire != null) return myMove({ fire: Number(d.fire) });
   if (d.rps) return myMove(d.rps);
   if (d.tt != null) return myMove(Number(d.tt));
+  if (d.key) return wordKey(d.key);
+  if (d.cwclue != null) { CW.sel = Number(d.cwclue); CW.typed = []; return render(); }
+  if (d.cwcell != null) return cwTapCell(Number(d.cwcell));
+  if (d.kids != null) { PREF.kids = d.kids === "1"; savePref(); return renderHome(); }
+  if (d.setkids != null) { if (MODE === "host" || MODE === "cpu") { PREF.kids = d.setkids === "1"; savePref(); S.opts = Object.assign({}, S.opts, { kids: PREF.kids }); if (S.phase === "over") nextRound(); commit(); } return; }
   if (d.wiask != null) { WI.guessing = false; return myMove({ ask: Number(d.wiask) }); }
   if (d.wiguess != null) { WI.guessing = false; return myMove({ guess: Number(d.wiguess) }); }
   if (d.deck) { PREF.deck = d.deck; savePref(); return renderHome(); }
@@ -1514,6 +1689,14 @@ app.addEventListener("click", e => {
     case "tolobby": return toLobby();
     case "golfnext": GOLF.card = null; render(); return maybeCPU();
     case "golfhit": return golfHit();
+    case "hmsolve": HM.solving = true; HM.typed = []; return render();
+    case "hmcancel": HM.solving = false; HM.typed = []; return render();
+    case "hmback": HM.typed.pop(); return render();
+    case "hmcheck": return hmAnswer();
+    case "cwcancel": CW.sel = null; CW.typed = []; return render();
+    case "cwback": CW.typed.pop(); return render();
+    case "cwcheck": return cwAnswer();
+    case "cwpass": return myMove({ pass: true });
     case "golfreset": GOLF.aim = null; drawGolf(); return golfHitUI();
     case "takesuggest": return takeSuggestion();
     case "nosuggest": if (MODE === "host" && S) { S.suggest = null; commit(); } return;

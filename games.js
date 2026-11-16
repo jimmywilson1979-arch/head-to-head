@@ -545,6 +545,219 @@
     return [HK.W / 2 + (px - HK.W / 2) * track, homeY];
   }
 
+  // ===== WORD GAMES: word lists =====
+  // Standard: categories of single words (A-Z only). Kids: [word, picture, kids crossword clue, category].
+  const WCATS = [
+    ["Animals", "🐾", "ELEPHANT GIRAFFE KANGAROO PENGUIN DOLPHIN CHEETAH GORILLA HEDGEHOG SQUIRREL OCTOPUS TORTOISE FLAMINGO RACCOON BADGER OSTRICH CROCODILE BUTTERFLY RABBIT HAMSTER PEACOCK"],
+    ["Food", "🍽️", "SPAGHETTI SANDWICH PANCAKE CRUMPET PINEAPPLE BROCCOLI SAUSAGE TRIFLE DOUGHNUT LASAGNE OMELETTE CHEESE BISCUIT PORRIDGE AVOCADO MUFFIN CUSTARD CRUMBLE NOODLES CARROT"],
+    ["Countries", "🌍", "FRANCE SPAIN ITALY GERMANY PORTUGAL ICELAND NORWAY SWEDEN GREECE TURKEY EGYPT BRAZIL CANADA MEXICO JAPAN CHINA INDIA KENYA WALES SCOTLAND IRELAND ENGLAND AUSTRALIA"],
+    ["Sport", "⚽", "FOOTBALL CRICKET TENNIS RUGBY SNOOKER DARTS GOLF HOCKEY NETBALL BOXING ROWING CYCLING SWIMMING ARCHERY BADMINTON SKIING SURFING KARATE JUDO BOWLING"],
+    ["Jobs", "👷", "DOCTOR NURSE TEACHER FARMER BAKER BUTCHER PILOT DENTIST PLUMBER BUILDER CHEF ENGINEER BARBER POSTMAN FIREFIGHTER VET LIBRARIAN ARTIST SCIENTIST MECHANIC"],
+    ["Around the house", "🏠", "KETTLE TOASTER CURTAINS PILLOW BLANKET SOFA CUSHION LADDER MIRROR TEAPOT CUPBOARD FRIDGE FREEZER BATHTUB TOOTHBRUSH WARDROBE CARPET CANDLE CLOCK RADIATOR"],
+    ["Christmas", "🎄", "REINDEER SNOWMAN STOCKING TINSEL CRACKER PRESENTS MISTLETOE CHIMNEY SLEIGH ELVES CAROLS BAUBLE TURKEY PUDDING ANGEL ICICLE SNOWFLAKE GINGERBREAD WREATH NATIVITY"],
+    ["Weather and nature", "🌦️", "RAINBOW THUNDER LIGHTNING BLIZZARD SUNSHINE DRIZZLE HURRICANE VOLCANO MOUNTAIN WATERFALL FOREST MEADOW ISLAND GLACIER DESERT CANYON RIVER OCEAN BREEZE PUDDLE"],
+    ["Music", "🎵", "GUITAR VIOLIN TRUMPET PIANO DRUMS FLUTE HARP CELLO TROMBONE SAXOPHONE TAMBOURINE ORCHESTRA MELODY RHYTHM CHORUS CONCERT BANJO UKULELE CLARINET XYLOPHONE"],
+  ].map(([name, ic, w]) => ({ name, ic, words: w.split(" ") }));
+  const KCATS = { animal: ["🐾", "Animal"], food: ["🍎", "Food"], go: ["🚗", "Going places"], out: ["🌤️", "Outside"], thing: ["🧸", "Things"], xmas: ["🎄", "Christmas"] };
+  const KIDS = [
+    ["CAT", "🐱", "Says meow", "animal"], ["DOG", "🐶", "Says woof", "animal"], ["COW", "🐮", "Says moo", "animal"], ["PIG", "🐷", "Says oink", "animal"],
+    ["DUCK", "🦆", "Says quack", "animal"], ["SHEEP", "🐑", "Says baa", "animal"], ["HORSE", "🐴", "Says neigh", "animal"], ["HEN", "🐔", "Lays eggs", "animal"],
+    ["FROG", "🐸", "Green and hops", "animal"], ["FISH", "🐟", "Swims in the sea", "animal"], ["BEE", "🐝", "Makes honey", "animal"], ["OWL", "🦉", "Says twit-twoo", "animal"],
+    ["LION", "🦁", "King of the jungle", "animal"], ["TIGER", "🐯", "Big cat with stripes", "animal"], ["ZEBRA", "🦓", "Black and white stripes", "animal"], ["BEAR", "🐻", "Big, furry and loves honey", "animal"],
+    ["MOUSE", "🐭", "Tiny and squeaks", "animal"], ["SNAIL", "🐌", "Carries its house", "animal"], ["WHALE", "🐳", "Biggest animal in the sea", "animal"], ["PENGUIN", "🐧", "A bird that can't fly", "animal"],
+    ["MONKEY", "🐵", "Loves bananas", "animal"], ["RABBIT", "🐰", "Long ears and hops", "animal"], ["APPLE", "🍎", "Red or green fruit", "food"], ["BANANA", "🍌", "Long yellow fruit", "food"],
+    ["CAKE", "🎂", "Has candles on your birthday", "food"], ["PIZZA", "🍕", "Cut into slices", "food"], ["MILK", "🥛", "White drink from a cow", "food"], ["EGG", "🥚", "A hen lays it", "food"],
+    ["BREAD", "🍞", "Make toast with it", "food"], ["GRAPES", "🍇", "Small fruit in bunches", "food"], ["CHEESE", "🧀", "Mice love it", "food"], ["CARROT", "🥕", "Orange, and rabbits love it", "food"],
+    ["CAR", "🚗", "Drive it on the road", "go"], ["BUS", "🚌", "Big, and takes you to school", "go"], ["TRAIN", "🚆", "Runs on tracks", "go"], ["BOAT", "⛵", "Sails on water", "go"],
+    ["PLANE", "✈️", "Flies in the sky", "go"], ["ROCKET", "🚀", "Goes to space", "go"], ["BIKE", "🚲", "Two wheels and pedals", "go"], ["SUN", "☀️", "Shines in the day", "out"],
+    ["MOON", "🌙", "Shines at night", "out"], ["STAR", "⭐", "Twinkles in the sky", "out"], ["RAIN", "🌧️", "Water from the clouds", "out"], ["SNOW", "❄️", "Cold and white", "out"],
+    ["TREE", "🌳", "Has leaves and branches", "out"], ["FLOWER", "🌸", "Grows in the garden", "out"], ["BALL", "⚽", "Kick it or throw it", "thing"], ["KITE", "🪁", "Flies on a windy day", "thing"],
+    ["DRUM", "🥁", "Bang it", "thing"], ["BOOK", "📖", "Has pages to read", "thing"], ["HAT", "🎩", "Wear it on your head", "thing"], ["SOCK", "🧦", "Goes on your foot", "thing"],
+    ["SHOE", "👟", "Goes over your sock", "thing"], ["CROWN", "👑", "A king wears it", "thing"], ["HOUSE", "🏠", "Where you live", "thing"], ["CASTLE", "🏰", "A king lives here", "thing"],
+    ["TEDDY", "🧸", "Cuddly bear toy", "thing"], ["ROBOT", "🤖", "A metal friend", "thing"], ["DRAGON", "🐉", "Breathes fire", "thing"], ["UNICORN", "🦄", "A horse with a horn", "thing"],
+    ["CLOCK", "🕒", "Tells the time", "thing"], ["KEY", "🔑", "Opens a door", "thing"], ["CUP", "☕", "Drink from it", "thing"], ["SANTA", "🎅", "Comes down the chimney", "xmas"],
+    ["GIFT", "🎁", "Wrapped up for you", "xmas"], ["BELL", "🔔", "Rings ding dong", "xmas"], ["SNOWMAN", "⛄", "Has a carrot nose", "xmas"], ["ELF", "🧝", "Santa's little helper", "xmas"],
+  ];
+  // Standard crossword: [answer, clue]
+  const CLUES = [
+    ["CAT", "Purring pet"], ["OWL", "Wise night bird"], ["ANT", "Tiny hard-working insect"], ["EGG", "Boil it, fry it or scramble it"], ["TEA", "Very British hot drink"],
+    ["SEA", "Salty body of water"], ["SUN", "Star at the centre of our solar system"], ["MAP", "Helps you find your way"], ["ICE", "Frozen water"], ["OAK", "Tree that grows acorns"],
+    ["ARM", "Limb with an elbow"], ["EAR", "You hear with it"], ["NET", "The goalkeeper guards it"], ["BAT", "Cricket kit, or a flying mammal"], ["PIE", "Pastry dish, like steak and kidney"],
+    ["GOLD", "First-place medal"], ["SNOW", "Falls in a blizzard"], ["RAIN", "Wet weather"], ["MOON", "It orbits the Earth"], ["STAR", "Twinkler in the night sky"],
+    ["LION", "Big cat with a mane"], ["BEAR", "Paddington, for one"], ["FROG", "Amphibian that croaks"], ["DUCK", "Bird that quacks"], ["CAKE", "Birthday treat with candles"],
+    ["MILK", "Goes in a cup of tea"], ["ROSE", "Red flower for Valentine's"], ["KITE", "Flown on a windy day"], ["DRUM", "Hit it with sticks"], ["NEST", "A bird's home"],
+    ["BOOK", "A novel, for example"], ["TRAIN", "Runs on rails"], ["PLANE", "Fly in it on holiday"], ["CLOCK", "Tells the time"], ["APPLE", "Keeps the doctor away"],
+    ["BREAD", "Toast is made from it"], ["HONEY", "Sweet stuff made by bees"], ["OCEAN", "The Atlantic, for one"], ["RIVER", "The Thames, for one"], ["TIGER", "Striped big cat"],
+    ["ZEBRA", "Striped horse-like animal"], ["SHEEP", "Woolly farm animal"], ["HORSE", "Ridden by a jockey"], ["PIANO", "Black and white keys"], ["TOAST", "Bread browned in the morning"],
+    ["LEMON", "Sour yellow fruit"], ["MONEY", "Pounds and pence"], ["EARTH", "The planet we live on"], ["CROWN", "A king wears it"], ["ROBOT", "Mechanical helper"],
+    ["SNAKE", "Slithering reptile"], ["EAGLE", "Bird of prey with a hooked beak"], ["CANDLE", "Lit on a birthday cake"], ["CASTLE", "Fortress with a moat"], ["DRAGON", "On the Welsh flag"],
+    ["GARDEN", "Where flowers and veg grow"], ["WINTER", "Season of snow and Christmas"], ["SUMMER", "The warmest season"], ["SPRING", "Season of lambs and daffodils"], ["ORANGE", "A fruit and a colour"],
+    ["TURKEY", "Christmas dinner bird"], ["PARROT", "Colourful talking bird"], ["RABBIT", "Pet with long ears"], ["MONKEY", "Banana-loving animal"], ["PENCIL", "Write with it, then rub it out"],
+    ["SCHOOL", "Where children learn"], ["DOCTOR", "See them when you're poorly"], ["FARMER", "Grows crops and keeps animals"], ["TENNIS", "Sport played at Wimbledon"], ["BANANA", "Long yellow fruit"],
+    ["CARROT", "A snowman's nose"], ["POTATO", "Chips are made from it"], ["PIRATE", "Sails under the skull and crossbones"], ["SPIDER", "Eight-legged web spinner"], ["KETTLE", "Boil water in it for a cuppa"],
+    ["WINDOW", "Glass pane in a wall"], ["MIRROR", "Shows your reflection"], ["LADDER", "Climb it to reach the roof"], ["JUNGLE", "Hot, steamy forest"], ["ISLAND", "Land surrounded by water"],
+    ["DESERT", "The Sahara, for one"], ["CAMERA", "Takes photos"], ["GUITAR", "Six-stringed instrument"], ["RAINBOW", "Seven colours after the rain"], ["PENGUIN", "Bird that swims but can't fly"],
+    ["DOLPHIN", "Clever sea mammal"], ["CHIMNEY", "Santa comes down it"], ["SNOWMAN", "Has a carrot for a nose"], ["BLANKET", "Keeps you warm in bed"], ["TEACHER", "Works in a classroom"],
+    ["LIBRARY", "Borrow books here"], ["COMPASS", "Points north"], ["ELEPHANT", "Largest land animal"], ["SANDWICH", "Two slices of bread with a filling"], ["MOUNTAIN", "Snowdon, for one"],
+    ["UMBRELLA", "Keeps you dry in the rain"], ["REINDEER", "Pulls Santa's sleigh"], ["DINOSAUR", "Extinct reptile, like T. rex"], ["VOLCANO", "Mountain that erupts"], ["HOSPITAL", "Where nurses and doctors work"],
+  ];
+  const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const isKids = S => !!(S.opts && S.opts.kids);
+  const A_Z = /^[A-Z]$/;
+  const clean = s => String(s || "").toUpperCase().replace(/[^A-Z]/g, "");
+
+  // ===== HANGMAN ===== one hidden word for both players; take turns guessing letters. Solve it (or find its last letter) to win the word. First to 3.
+  const HM_TARGET = 3, LETTER_FREQ = "EAIRTONSLCUDPMHGBFYWKVXZJQ";
+  function hmNewWord(S) {
+    const b = S.board, kids = b.kids, used = S.sec.used || (S.sec.used = []);
+    let word, pic = null;
+    if (kids) { const pool = KIDS.filter(k => !used.includes(k[0])), k = rnd(pool.length ? pool : KIDS); word = k[0]; pic = k[1]; [b.ic, b.cat] = KCATS[k[3]]; }
+    else { const c = rnd(WCATS), pool = c.words.filter(w => !used.includes(w)); word = rnd(pool.length ? pool : c.words); b.cat = c.name; b.ic = c.ic; }
+    used.push(word); S.sec.word = word; S.sec.pic = pic;
+    b.len = word.length; b.shown = Array(word.length).fill(""); b.used = {}; b.wrong = 0; b.pic = null; b.n++;
+    S.turn = (S.starter + b.n + 1) % 2;
+  }
+  function hmEnd(S, w) { // the word is over: w = seat that got it, or null if the gallows/balloons ran out
+    const b = S.board, word = S.sec.word;
+    b.prev = { word, w, pic: S.sec.pic, n: b.n };
+    if (w != null) b.score[w]++;
+    if (w != null && b.score[w] >= HM_TARGET) { b.shown = word.split(""); S.result = { w, line: [] }; return; }
+    if (b.n >= 11) { b.shown = word.split(""); S.result = { w: b.score[0] === b.score[1] ? "draw" : b.score[0] > b.score[1] ? 0 : 1, line: [] }; return; } // 12 words: most words wins
+    hmNewWord(S);
+  }
+  function hmCands(S) {
+    const b = S.board, list = b.kids ? KIDS.map(k => k[0]) : (WCATS.find(c => c.name === b.cat) || { words: [] }).words;
+    return list.filter(w => w.length === b.len && [...w].every((ch, i) => b.shown[i] ? b.shown[i] === ch : b.used[ch] === undefined));
+  }
+  function hmAI(S, seat, level) {
+    const b = S.board, left = b.shown.filter(x => !x).length, c = hmCands(S);
+    const solveP = level === "hard" ? (c.length === 1 ? 1 : c.length === 2 ? .5 : 0) : level === "medium" ? (c.length === 1 && left <= Math.ceil(b.len / 2) ? .8 : 0) : (c.length === 1 && left <= 2 ? .7 : c.length <= 3 && left <= 1 ? .5 : 0);
+    if (c.length && Math.random() < solveP) return { solve: rnd(c) };
+    const free = [...LETTER_FREQ].filter(ch => b.used[ch] === undefined);
+    if (level === "easy" && (!c.length || Math.random() < .55)) return { letter: Math.random() < .6 ? free[Math.floor(Math.random() * Math.min(8, free.length))] : rnd(free) };
+    if (c.length) {
+      const cnt = {}; c.forEach(w => new Set(w).forEach(ch => { if (b.used[ch] === undefined) cnt[ch] = (cnt[ch] || 0) + 1; }));
+      let order = Object.keys(cnt).sort((x, y) => cnt[y] - cnt[x]);
+      if (level === "medium" && order.length > 2 && Math.random() < .35) order = order.slice(1);
+      if (order.length) return { letter: order[0] };
+    }
+    return { letter: free[0] };
+  }
+
+  // ===== WORD SEARCH ===== one grid for both; race to spot the words. Kids: 8 x 8, across and down only.
+  const WS_DIRS = [[0, 1], [1, 0], [1, 1], [-1, 1], [0, -1], [-1, 0], [-1, -1], [1, -1]];
+  const WS_FILL = "AABCDEEEFGHIIKLMNOOPRSSTTUWY";
+  function wsMake(kids) {
+    const N = kids ? 8 : 10, want = kids ? 6 : 8, dirs = kids ? WS_DIRS.slice(0, 2) : WS_DIRS;
+    for (let tries = 0; tries < 60; tries++) {
+      let src, cat, ic;
+      if (kids) { src = shuffle(KIDS.filter(k => k[0].length <= 7).slice()); cat = "Find the pictures"; ic = "🔎"; }
+      else { const c = rnd(WCATS); cat = c.name; ic = c.ic; src = shuffle(c.words.filter(w => w.length <= N)); }
+      const g = Array(N * N).fill(""), words = [], pos = [];
+      for (const it of src) {
+        if (words.length >= want) break;
+        const w = kids ? it[0] : it;
+        for (let t = 0; t < 150; t++) {
+          const [dr, dc] = rnd(dirs), r0 = Math.floor(Math.random() * N), c0 = Math.floor(Math.random() * N);
+          const r1 = r0 + dr * (w.length - 1), c1 = c0 + dc * (w.length - 1);
+          if (r1 < 0 || r1 >= N || c1 < 0 || c1 >= N) continue;
+          let ok = true, overlap = 0;
+          for (let i = 0; i < w.length && ok; i++) { const k = (r0 + dr * i) * N + c0 + dc * i; if (g[k] && g[k] !== w[i]) ok = false; else if (g[k]) overlap++; }
+          if (!ok || overlap > 1) continue;
+          for (let i = 0; i < w.length; i++) g[(r0 + dr * i) * N + c0 + dc * i] = w[i];
+          words.push({ w, pic: kids ? it[1] : null, by: null, line: null }); pos.push([r0 * N + c0, r1 * N + c1]); break;
+        }
+      }
+      if (words.length < want) continue;
+      for (let k = 0; k < g.length; k++) if (!g[k]) g[k] = WS_FILL[Math.floor(Math.random() * WS_FILL.length)];
+      return { N, g: g.join(""), words, pos, cat, ic };
+    }
+    return null;
+  }
+  function wsLine(N, a, z) { // cells from a to z, or null if not a straight line
+    const r0 = Math.floor(a / N), c0 = a % N, r1 = Math.floor(z / N), c1 = z % N, dr = Math.sign(r1 - r0), dc = Math.sign(c1 - c0);
+    const len = Math.max(Math.abs(r1 - r0), Math.abs(c1 - c0)) + 1;
+    if (a === z || (r0 !== r1 && c0 !== c1 && Math.abs(r1 - r0) !== Math.abs(c1 - c0))) return null;
+    return Array.from({ length: len }, (_, i) => (r0 + dr * i) * N + c0 + dc * i);
+  }
+  function wsMatch(b, a, z) { // index of the unfound word spelled from a to z (either way round), or -1
+    const cells = Number.isInteger(a) && Number.isInteger(z) && a >= 0 && z >= 0 && a < b.N * b.N && z < b.N * b.N ? wsLine(b.N, a, z) : null;
+    if (!cells) return -1;
+    const s = cells.map(k => b.g[k]).join(""), r = [...s].reverse().join("");
+    return b.words.findIndex(w => !w.by && w.by !== 0 && (w.w === s || w.w === r));
+  }
+  function wsAI(S, seat) {
+    const b = S.board, left = b.words.map((w, i) => i).filter(i => b.words[i].by == null), i = rnd(left);
+    return i == null ? null : { ws: S.sec.pos[i] };
+  }
+
+  // ===== CROSSWORD ===== a fresh mini crossword each game; take turns answering clues. Kids: picture clues, first letters given.
+  function cwBuild(kids) {
+    const pool = kids ? KIDS.map(k => ({ a: k[0], clue: k[2], pic: k[1] })) : CLUES.map(c => ({ a: c[0], clue: c[1], pic: null }));
+    const want = kids ? 6 : 9, LIM = kids ? 9 : 11;
+    let best = null;
+    for (let attempt = 0; attempt < 80; attempt++) {
+      const cand = shuffle(pool.slice()).slice(0, 45), grid = new Map(), placed = [];
+      const key = (r, c) => r + "," + c, at = (r, c) => grid.get(key(r, c));
+      let box = { r0: 0, r1: 0, c0: 0, c1: 0 }, cross = 0;
+      const put = (e, r, c, d) => { for (let i = 0; i < e.a.length; i++) grid.set(key(r + (d ? i : 0), c + (d ? 0 : i)), e.a[i]); placed.push(Object.assign({}, e, { r, c, d }));
+        box = { r0: Math.min(box.r0, r), c0: Math.min(box.c0, c), r1: Math.max(box.r1, r + (d ? e.a.length - 1 : 0)), c1: Math.max(box.c1, c + (d ? 0 : e.a.length - 1)) }; };
+      const fits = (w, r, c, d) => {
+        const dr = d ? 1 : 0, dc = d ? 0 : 1;
+        if (at(r - dr, c - dc) || at(r + dr * w.length, c + dc * w.length)) return -1;
+        const nb = { r0: Math.min(box.r0, r), c0: Math.min(box.c0, c), r1: Math.max(box.r1, r + dr * (w.length - 1)), c1: Math.max(box.c1, c + dc * (w.length - 1)) };
+        if (nb.r1 - nb.r0 + 1 > LIM || nb.c1 - nb.c0 + 1 > LIM) return -1;
+        let n = 0;
+        for (let i = 0; i < w.length; i++) {
+          const rr = r + dr * i, cc = c + dc * i, ex = at(rr, cc);
+          if (ex) { if (ex !== w[i]) return -1; n++; }
+          else if (at(rr + dc, cc + dr) || at(rr - dc, cc - dr)) return -1; // nothing alongside, so no accidental words
+        }
+        return n;
+      };
+      const first = cand.find(e => e.a.length >= (kids ? 4 : 6)) || cand[0];
+      put(first, 0, 0, 0);
+      for (const e of cand) {
+        if (placed.length >= want) break;
+        if (placed.some(p => p.a === e.a)) continue;
+        let bp = null;
+        for (const p of placed) for (let i = 0; i < p.a.length; i++) for (let j = 0; j < e.a.length; j++) {
+          if (p.a[i] !== e.a[j]) continue;
+          const d = 1 - p.d, cr = p.r + (p.d ? i : 0), cc = p.c + (p.d ? 0 : i), r = d ? cr - j : cr, c = d ? cc : cc - j;
+          const n = fits(e.a, r, c, d);
+          if (n > 0 && (!bp || n > bp.n || (n === bp.n && Math.random() < .3))) bp = { r, c, d, n };
+        }
+        if (bp) { put(e, bp.r, bp.c, bp.d); cross += bp.n; }
+      }
+      const sc = placed.length * 10 + cross;
+      if (!best || sc > best.sc) best = { sc, placed, box };
+      if (placed.length >= want && attempt > 20) break;
+    }
+    const { placed, box } = best, w = box.c1 - box.c0 + 1, h = box.r1 - box.r0 + 1;
+    const mask = Array(w * h).fill(false), nums = Array(w * h).fill(0);
+    placed.forEach(p => { p.r -= box.r0; p.c -= box.c0; for (let i = 0; i < p.a.length; i++) mask[(p.r + (p.d ? i : 0)) * w + p.c + (p.d ? 0 : i)] = true; });
+    let n = 0;
+    for (let k = 0; k < w * h; k++) if (placed.some(p => p.r * w + p.c === k)) nums[k] = ++n;
+    placed.sort((x, y) => x.d - y.d || nums[x.r * w + x.c] - nums[y.r * w + y.c]);
+    return { w, h, mask, nums, words: placed.map(p => ({ n: nums[p.r * w + p.c], d: p.d, r: p.r, c: p.c, len: p.a.length, clue: p.clue, pic: p.pic, by: null })), ans: placed.map(p => p.a) };
+  }
+  const cwCells = (b, wd) => Array.from({ length: wd.len }, (_, i) => (wd.r + (wd.d ? i : 0)) * b.w + wd.c + (wd.d ? 0 : i));
+  function cwFill(S, i, seat) { // write word i into the grid; any other word that's now complete counts as done
+    const b = S.board, a = S.sec.ans[i];
+    cwCells(b, b.words[i]).forEach((k, j) => { if (!b.letters[k]) { b.letters[k] = a[j]; b.own[k] = seat; } });
+    b.words.forEach((wd, j) => { if (wd.by == null && cwCells(b, wd).every(k => b.letters[k])) wd.by = j === i ? seat : "auto"; });
+  }
+  function cwAI(S, seat, level) {
+    const b = S.board, open = b.words.map((wd, i) => i).filter(i => b.words[i].by == null);
+    if (!open.length) return { pass: true };
+    const frac = i => cwCells(b, b.words[i]).filter(k => b.letters[k]).length / b.words[i].len;
+    const i = open.sort((x, y) => frac(y) - frac(x) + (Math.random() - .5) * .3)[0];
+    const p = ({ easy: .3, medium: .5, hard: .78 }[level] || .5) + .4 * frac(i);
+    if (Math.random() < p) return { cw: i, word: S.sec.ans[i] };
+    const pool = (b.kids ? KIDS.map(k => k[0]) : CLUES.map(c => c[0])).filter(x => x.length === b.words[i].len && x !== S.sec.ans[i]);
+    return pool.length && Math.random() < .6 ? { cw: i, word: rnd(pool) } : { pass: true };
+  }
+
   // ===== THE GAME LIST =====
   // init(S): set S.board (everyone sees), S.sec (host only), S.turn (seat, or -1 when both act at once)
   // waiting(S, seat): does this seat need to act now?
@@ -749,6 +962,93 @@
         return "reveal";
       },
       ai: rpsAI,
+    },
+    hm: {
+      id: "hm", name: "Hangman", local: false, word: true, TARGET: HM_TARGET,
+      init(S) {
+        const kids = isKids(S);
+        S.sec = { used: [] };
+        S.board = { kids, score: [0, 0], target: HM_TARGET, max: kids ? 10 : 8, n: -1, prev: null };
+        hmNewWord(S);
+      },
+      waiting: turnWaiting,
+      move(S, seat, mv) {
+        const b = S.board, word = S.sec.word; if (!mv || typeof mv !== "object") return false;
+        if (mv.letter != null) {
+          const L = String(mv.letter).toUpperCase(); if (!A_Z.test(L) || b.used[L] !== undefined) return false;
+          let hits = 0; [...word].forEach((ch, i) => { if (ch === L) { b.shown[i] = ch; hits++; } });
+          b.used[L] = hits ? 1 : 0; S.last = { seat, letter: L, hits, n: b.n };
+          if (hits) { if (b.shown.every(x => x)) { hmEnd(S, seat); return "box"; } S.turn = 1 - seat; return "yes"; }
+          b.wrong++; if (b.kids && b.wrong >= 3) b.pic = S.sec.pic;
+          if (b.wrong >= b.max) { hmEnd(S, null); return "wrong"; }
+          S.turn = 1 - seat; return "no";
+        }
+        if (mv.solve != null) {
+          const g = clean(mv.solve); if (g.length !== word.length) return false;
+          S.last = { seat, solve: g, ok: g === word, n: b.n };
+          if (g === word) { b.shown = word.split(""); hmEnd(S, seat); return "box"; }
+          if (!b.kids) { b.wrong++; if (b.wrong >= b.max) { hmEnd(S, null); return "wrong"; } }
+          S.turn = 1 - seat; return "no";
+        }
+        return false;
+      },
+      ai: hmAI,
+      aiDelay: () => 900 + Math.random() * 700,
+    },
+    ws: {
+      id: "ws", name: "Word Search", local: false, word: true,
+      init(S) {
+        const kids = isKids(S), m = wsMake(kids);
+        S.sec = { pos: m.pos };
+        S.board = { kids, N: m.N, g: m.g, words: m.words, cat: m.cat, ic: m.ic, score: [0, 0] };
+        S.turn = -1;
+      },
+      waiting: (S, seat) => S.board.words.some(w => w.by == null),
+      move(S, seat, mv) {
+        const b = S.board; if (!mv || !Array.isArray(mv.ws) || mv.ws.length !== 2) return false;
+        const [a, z] = mv.ws, i = wsMatch(b, a, z); if (i < 0) return false;
+        b.words[i].by = seat; b.words[i].line = [a, z]; b.score[seat]++; S.last = { seat, i };
+        if (b.words.every(w => w.by != null)) S.result = { w: b.score[0] === b.score[1] ? "draw" : b.score[0] > b.score[1] ? 0 : 1, line: [] };
+        return "box";
+      },
+      ai: wsAI,
+      aiDelay: (S, level) => (({ easy: 13000, medium: 8500, hard: 5000 }[level] || 8500) + Math.random() * 4000) * (S.board.kids ? 1.25 : 1),
+      line: wsLine, match: wsMatch,
+    },
+    cw: {
+      id: "cw", name: "Crossword", local: false, word: true,
+      init(S) {
+        const kids = isKids(S), m = cwBuild(kids);
+        S.sec = { ans: m.ans };
+        S.board = { kids, w: m.w, h: m.h, mask: m.mask, nums: m.nums, words: m.words, letters: Array(m.w * m.h).fill(""), own: Array(m.w * m.h).fill(null), score: [0, 0], passes: 0 };
+        if (kids) m.words.forEach((wd, i) => { const k = wd.r * m.w + wd.c; S.board.letters[k] = m.ans[i][0]; S.board.own[k] = -1; });
+        S.turn = S.starter;
+      },
+      waiting: turnWaiting,
+      move(S, seat, mv) {
+        const b = S.board; if (!mv || typeof mv !== "object") return false;
+        if (mv.pass) {
+          b.passes++; S.last = { seat, pass: true };
+          if (b.passes >= 2) { // both stuck: the game fills in a letter
+            const open = []; b.words.forEach(wd => { if (wd.by == null) cwCells(b, wd).forEach(k => { if (!b.letters[k]) open.push(k); }); });
+            if (open.length) { const k = rnd(open), wi = b.words.findIndex(wd => wd.by == null && cwCells(b, wd).includes(k)), j = cwCells(b, b.words[wi]).indexOf(k);
+              b.letters[k] = S.sec.ans[wi][j]; b.own[k] = -1; S.last.gift = k;
+              b.words.forEach(wd => { if (wd.by == null && cwCells(b, wd).every(x => b.letters[x])) wd.by = "auto"; }); }
+            b.passes = 0;
+          }
+        } else {
+          const i = mv.cw; if (!Number.isInteger(i) || !b.words[i] || b.words[i].by != null) return false;
+          const g = clean(mv.word); if (g.length !== b.words[i].len) return false;
+          const ok = g === S.sec.ans[i]; b.passes = 0; S.last = { seat, i, ok, word: g };
+          if (ok) { cwFill(S, i, seat); b.score[seat]++; }
+        }
+        if (b.words.every(wd => wd.by != null)) S.result = { w: b.score[0] === b.score[1] ? "draw" : b.score[0] > b.score[1] ? 0 : 1, line: [] };
+        else S.turn = 1 - seat;
+        return mv.pass ? "line" : S.last.ok ? "box" : "no";
+      },
+      ai: cwAI,
+      aiDelay: () => 1500 + Math.random() * 1200,
+      cells: cwCells,
     },
   };
   root.GAMES = GAMES;
