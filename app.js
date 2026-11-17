@@ -528,6 +528,7 @@ const disc = () => `<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" fi
 const HAND = { r: "✊", p: "✋", s: "✌️" }, HAND_NAME = { r: "Rock", p: "Paper", s: "Scissors" };
 const BEAT_TEXT = { rs: "Rock blunts scissors", pr: "Paper wraps rock", sp: "Scissors cut paper" };
 function markFor(game, seat) {
+  if (typeof MARK2 === "object" && MARK2[game]) return MARK2[game](seat);
   if (game === "ttt") return seat === 0 ? svgX() : svgO();
   if (game === "dots") return `<svg viewBox="0 0 100 100"><rect x="14" y="14" width="72" height="72" rx="8" fill="var(--c)" opacity=".85"/></svg>`;
   if (game === "bs") return `<svg viewBox="0 0 100 100"><path d="M10 58h80l-12 18H22z" fill="var(--c)"/><rect x="34" y="40" width="30" height="16" rx="3" fill="var(--c)"/><rect x="46" y="26" width="6" height="16" fill="var(--c)"/></svg>`;
@@ -1552,6 +1553,7 @@ function renderGame() {
     if (S.game === "tt" && !(over && S.result.w === seat)) sub = `${S.board.count[seat]} card${S.board.count[seat] === 1 ? "" : "s"}`;
     if (WORDG.includes(S.game) && S.board && !(over && S.result.w === seat)) { const n = S.board.score[seat]; sub = S.game === "ws" ? `${n} found` : `${n} word${n === 1 ? "" : "s"}`; }
     if (RACEG.includes(S.game) && S.board && !(over && S.result.w === seat)) sub = raceChip(seat);
+    if (typeof g2Chip === "function" && !(over && S.result.w === seat)) { const x = g2Chip(seat); if (x != null) sub = x; }
     return `<div class="chip p${seat} ${side} ${w && !simul ? "turn" : ""}"><span class="mk">${markFor(S.game, seat)}</span><span class="nm"><b>${label}</b><span>${sub}&nbsp;</span></span></div>`;
   };
   const w0 = (pl(S.seats[0]) || {}).wins || 0, w1 = (pl(S.seats[1]) || {}).wins || 0;
@@ -1604,13 +1606,14 @@ function renderGame() {
     if (S.game === "cw") sub = `Words answered ${S.board.score[0]} – ${S.board.score[1]}`;
     if (S.game === "tt") sub = S.board.count[0] && S.board.count[1] ? `Most cards after ${GAMES.tt.MAX_ROUNDS} rounds: ${S.board.count[0]} – ${S.board.count[1]}` : "Won every card";
   }
+  if (typeof g2Sub === "function" && (S.phase === "play" || over)) { const x = g2Sub(me, over, myTurn); if (x != null && (x || !sub)) sub = x; }
   if (S.pass && S.phase === "play" && !shaking) { // one screen: say whose go it is, by name
     const now = mySeat();
     if (now >= 0) { status = `${esc(nameOf(S.seats[now]))}'s turn`; cls = "me p" + now; }
   }
 
   const board = { ttt: boardTTT, c4: boardC4, dots: boardDots, bs: boardBS, rps: boardRPS, tt: boardTT, wi: boardWI, golf: boardGolf, hm: boardHM, ws: boardWS, cw: boardCW, flag: boardFlag, snap: boardSnap, spot: boardSpot,
-    hockey: () => `<div class="hkfinal"><span class="p0">${S.board.score[0]}</span><em>–</em><span class="p1">${S.board.score[1]}</span></div>` }[S.game](c);
+    hockey: () => `<div class="hkfinal"><span class="p0">${S.board.score[0]}</span><em>–</em><span class="p1">${S.board.score[1]}</span></div>`, ...(typeof BOARDS2 === "object" ? BOARDS2 : {}) }[S.game](c);
 
   let after = "";
   if (over) {

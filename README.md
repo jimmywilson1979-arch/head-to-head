@@ -65,6 +65,15 @@ Hard is unbeatable at Noughts & Crosses, very strong at Connect 4 and Dots & Box
 - **Spot the Difference** – two pictures that are almost the same; race to tap the differences on either one. Each find is circled in your colour. Tap a wrong spot and you get a ✖ and a one-second freeze. 3 pictures a game, 7 differences each (Kids: 5 bigger, more obvious ones). Pictures are made fresh every game from 6 scenes (Garden, Under the sea, Space, Christmas Eve, Farm, Seaside): things go missing, change, flip round, grow or shrink, appear, and bits of the background change too. If you're both stuck, both tap **Skip this picture** (against the computer it skips straight away), and the ones nobody found are shown with dashed rings.
 - The **Standard / Kids** switch appears for these three as well.
 
+### Board and table games
+- **Draughts** – English rules on an 8×8 board. Pieces move diagonally forward; jumping is compulsory and you must keep jumping if you can. Reach the far row to get a king (it can move backwards, and crowning ends your go). Win by taking every piece or leaving the other player with no move. 40 moves each with nothing taken is a draw. Tap a piece, then where it's going (for a double jump, tap each landing square). Also works on **one screen**.
+- **Chess** – full rules: castling, en passant, promotion (you choose the piece), check, checkmate and stalemate, plus draws for 50 moves with no capture or pawn move, the same position three times, or not enough pieces left. Whoever starts the round plays White; each phone shows the board from its own side. Tap a piece to see where it can go. Captured pieces and the last few moves are shown, and there's a **🏳️ Give up** button. Also works on **one screen**.
+- **Dominoes** – double-six set, 7 tiles each, the rest in the pile. Match a number at either end of the line; if a tile fits both ends, tap it and then the end you want. Can't go? Pick up from the pile until you can, and once the pile is empty you **knock**. First to play every tile wins; if nobody can go, the fewest spots left wins.
+- **Colour Clash** (Uno style, our own name) – 108 cards in red, green, blue and yellow: numbers, ⊘ Skip, ⇄ Reverse, +2, ★ Wild and +4. Match the colour or the number/symbol. With two players Reverse works like Skip, so Skip, Reverse, +2 and +4 all mean you go again. Can't go? Pick up one card; play it if it fits, or keep it and pass. When the pile runs out the played cards are shuffled back in. First to play every card wins.
+- Computer players for all four: Easy makes mistakes, Medium looks a few moves ahead, Hard looks deeper (chess thinks for up to about 2 seconds).
+- Dominoes and Colour Clash: each phone only shows its own hand. The hands do travel to both phones with the game, so it relies on nobody digging into the page code.
+- Roll On (3–4 players) versions of Dominoes and Colour Clash are planned.
+
 ## Coming next
 - More **Card Clash** themes (see ideas list)
 - **Who Is It? family edition** – your own family photos instead of cartoon faces
@@ -73,9 +82,9 @@ Hard is unbeatable at Noughts & Crosses, very strong at Connect 4 and Dots & Box
 - The host phone holds the real game and sends the board to everyone; other phones send their moves to it.
 - Air hockey: the host phone runs the physics 120 times a second. The two phones try to link **directly** over Wi-Fi (WebRTC, shown as ⚡ Direct) for the lowest delay; if that isn't possible they fall back to the online connection (☁️ Online), which is slower and uses more of the free Supabase message allowance.
 - Flag images: [flag-icons](https://github.com/lipis/flag-icons) (MIT licence, see `img/flags/LICENSE-flag-icons`).
-- Hidden things (Battleships fleets, Rock Paper Scissors picks) are never sent out – only the board everyone is allowed to see.
+- Hidden things (Battleships fleets, Rock Paper Scissors picks) are never sent out – only the board everyone is allowed to see. (Dominoes and Colour Clash hands are the exception, see above.)
 - Uses the same live connection (Supabase Realtime broadcast) as Buzz In. Nothing is stored on a server.
-- `games.js` holds the rules and computer players for each game, so new games plug in there.
+- `games.js` holds the rules and computer players for each game, so new games plug in there. Draughts, Chess, Dominoes and Colour Clash are in `games2.js` (rules and computer) and `boards2.js` (their screens).
 
 ## 📱 Getting back in
 During a game, the host can tap **📱 Join QR** in the top bar to show the QR code and the room code. If someone drops out, they join again with the **same name** and get their old place back, with their wins, seat and turn. A new phone only takes over a name if that player has been offline for 15 seconds or more.

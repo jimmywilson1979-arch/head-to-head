@@ -437,3 +437,98 @@ img.face { aspect-ratio: 1; object-fit: cover; border-radius: 7px; background: #
 #pkov h2 { margin: 0 0 8px; }
 #pkov p { margin: 0 0 10px; line-height: 1.4; }
 .pkload { background: rgba(108,140,255,.18); border: 1px solid rgba(108,140,255,.45); border-radius: 12px; padding: 8px 12px; margin: 0 0 10px; font-size: 14px; text-align: center; }
+
+/* ===== Draughts, Chess, Dominoes, Colour Clash ===== */
+.g2row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 10px auto 0; width: min(100%, 460px); flex-wrap: wrap; }
+.g2row.center { justify-content: center; }
+.dboard, .cboard { display: grid; grid-template-columns: repeat(8, 1fr); width: min(100%, 460px, 62vh); aspect-ratio: 1; margin: 0 auto; border-radius: 10px; overflow: hidden; border: 5px solid #5a3a22; box-shadow: 0 8px 0 rgba(0,0,0,.35); }
+.dboard button, .cboard button { all: unset; position: relative; display: grid; place-items: center; aspect-ratio: 1; }
+.dboard .lt { background: #e9cf9f; } .dboard .dk { background: #8a5a35; }
+.dboard .dk.last { background: #a7703f; }
+.dboard .dk.tgt::after { content: ""; width: 34%; height: 34%; border-radius: 50%; background: rgba(81,224,138,.85); box-shadow: 0 0 0 3px rgba(255,255,255,.5); }
+.dpc { display: grid; place-items: center; width: 80%; height: 80%; border-radius: 50%; background: var(--c); box-shadow: inset 0 -4px 0 rgba(0,0,0,.28), inset 0 0 0 4px rgba(255,255,255,.22), 0 3px 0 rgba(0,0,0,.35); font-style: normal; font-size: min(5vw, 26px); color: rgba(0,0,0,.55); transition: transform .15s; }
+.dpc.p0 { --c: var(--p0); } .dpc.p1 { --c: var(--p1); }
+.dboard .can .dpc { box-shadow: inset 0 -4px 0 rgba(0,0,0,.28), inset 0 0 0 4px rgba(255,255,255,.22), 0 0 0 3px #fff8; }
+.dpc.sel { transform: scale(1.1); box-shadow: 0 0 0 4px #fff, 0 0 16px #fff; }
+.dpc.ghost { background: rgba(0,0,0,.25); box-shadow: none; animation: g2fade .7s forwards; }
+.dstep { position: absolute; width: 26%; height: 26%; border-radius: 50%; background: #fff; opacity: .8; }
+@keyframes g2fade { to { opacity: 0; transform: scale(.4); } }
+
+.cwrap { position: relative; width: min(100%, 460px, 62vh); margin: 0 auto; }
+.cboard { width: 100%; border-color: #6b4a2c; }
+.cboard .lt { background: #f0d9b5; } .cboard .dk { background: #b58863; }
+.cboard .last.lt { background: #f3e889; } .cboard .last.dk { background: #d4bd52; }
+.cboard .sel { background: #8fd18a !important; }
+.cboard .chk { background: radial-gradient(circle, #ff3b3b 0%, #ff3b3b88 45%, transparent 75%), #e7a0a0 !important; }
+.cboard .tgt::after { content: ""; position: absolute; width: 30%; height: 30%; border-radius: 50%; background: rgba(20,60,20,.4); }
+.cboard .tgt.cap::after { width: 86%; height: 86%; background: none; border: 5px solid rgba(20,60,20,.4); box-sizing: border-box; }
+.cpc { font-style: normal; font-size: min(9vw, 50px); line-height: 1; z-index: 1; font-family: "Segoe UI Symbol", "Noto Sans Symbols 2", "DejaVu Sans", sans-serif; }
+.cpc.w { color: #fff; text-shadow: 0 0 1px #000, 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 0 2px 2px rgba(0,0,0,.4); }
+.cpc.b { color: #1b1b1f; text-shadow: 0 0 1px #fff8, 0 2px 2px rgba(0,0,0,.3); }
+.cboard em { position: absolute; font: 700 10px "Fredoka", sans-serif; font-style: normal; color: rgba(0,0,0,.45); }
+.cboard .rk { top: 2px; left: 3px; } .cboard .fl { bottom: 1px; right: 3px; }
+.ctaken { width: min(100%, 460px, 62vh); margin: 4px auto; min-height: 22px; font-size: 20px; letter-spacing: -2px; font-family: "Segoe UI Symbol", "Noto Sans Symbols 2", "DejaVu Sans", sans-serif; }
+.ctaken.w { color: #fff; } .ctaken.b { color: #9aa3c6; }
+.cmoves { font-size: 13px; color: var(--mut); flex: 1; min-width: 0; }
+.cmoves b { color: var(--ink); margin-left: 4px; font-weight: 600; }
+.promo { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; background: rgba(11,16,32,.82); border-radius: 10px; z-index: 3; }
+.promo p { margin: 0 0 10px; font-weight: 700; }
+.promo div { display: flex; gap: 8px; }
+.promo button { all: unset; width: 64px; height: 64px; display: grid; place-items: center; background: #f0d9b5; border-radius: 12px; cursor: pointer; }
+.cmark { font-size: 28px; line-height: 1; font-family: "Segoe UI Symbol", "Noto Sans Symbols 2", sans-serif; }
+.cmark.w { color: #fff; text-shadow: 0 0 2px var(--c), 0 0 1px #000, 0 0 1px #000; } .cmark.b { color: #111; text-shadow: 0 0 3px var(--c), 0 0 2px var(--c); }
+
+.ohand { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; justify-content: center; margin: 2px auto 10px; font-size: 13px; color: var(--mut); }
+.ohand > span { width: 100%; text-align: center; margin-bottom: 4px; }
+.domback { width: 14px; height: 28px; border-radius: 4px; background: linear-gradient(135deg, #3b4c9b, #23306b); border: 1.5px solid #8090d8; }
+.dtable { background: #135c3a; border: 4px solid #0d3f28; border-radius: 18px; padding: 12px 8px; margin: 0 auto 12px; width: min(100%, 520px); box-shadow: inset 0 0 30px rgba(0,0,0,.35); }
+.dtable .mut { color: #b9dcc6; margin-top: 8px; }
+.dchain { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 3px; min-height: 48px; }
+svg.dom { flex: none; }
+svg.dom rect { fill: #f8f3e6; stroke: #1b2140; stroke-width: 2; }
+svg.dom line { stroke: #1b2140; stroke-width: 2; }
+svg.dom circle { fill: #1b2140; }
+.dchain svg.dom.h { width: 46px; height: 23px; } .dchain svg.dom.v { width: 23px; height: 46px; }
+.dchain svg.dom.lastt rect, .dchain svg.dom.new rect { fill: #fff6b8; }
+.dchain svg.dom.new { animation: g2pop .35s; }
+@keyframes g2pop { from { transform: scale(1.6); opacity: .2; } }
+.dend { all: unset; font: 700 15px "Fredoka", sans-serif; padding: 6px 9px; border-radius: 10px; background: rgba(0,0,0,.25); color: #d8f0e0; }
+.dend.go { background: var(--good); color: #0b1020; cursor: pointer; animation: g2pulse 1s infinite alternate; }
+@keyframes g2pulse { to { transform: scale(1.12); } }
+.dhand { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 12px auto 0; width: min(100%, 520px); }
+.dhand svg.dom { width: 38px; height: 76px; transition: transform .15s, opacity .2s; }
+.dhand svg.dom.ok { cursor: pointer; transform: translateY(-6px); filter: drop-shadow(0 0 6px rgba(81,224,138,.9)); }
+.dhand svg.dom.no { opacity: .45; }
+.dhand svg.dom.sel { transform: translateY(-14px) scale(1.08); filter: drop-shadow(0 0 8px #fff); }
+
+.cctable { display: flex; align-items: center; justify-content: center; gap: 26px; margin: 4px auto 12px; }
+.ccpile { display: grid; justify-items: center; gap: 6px; }
+.cccol { font-size: 13px; font-weight: 700; min-height: 16px; }
+.cccol.c-r { color: #ff6b68; } .cccol.c-g { color: #4fd17a; } .cccol.c-b { color: #6aa6ff; } .cccol.c-y { color: #ffd23f; }
+.ccdeck { all: unset; display: grid; justify-items: center; gap: 6px; font-size: 13px; color: var(--mut); cursor: pointer; }
+.ccdeck[data-g2] span { color: var(--ink); font-weight: 700; }
+.ccdeck[data-g2] .ccback { animation: g2pulse 1s infinite alternate; }
+.ccback { display: block; width: 16px; height: 24px; border-radius: 4px; background: radial-gradient(ellipse at center, #e8423f 0 28%, #1b1b22 30%); border: 1.5px solid #fff; }
+.ccback.big { width: 64px; height: 96px; border-radius: 10px; border-width: 3px; }
+.ccbacks { display: flex; gap: 2px; }
+.ccard { all: unset; box-sizing: border-box; position: relative; width: 56px; height: 84px; border-radius: 9px; border: 3px solid #fff; display: grid; place-items: center; color: #fff; font: 700 15px "Fredoka", sans-serif; box-shadow: 0 3px 0 rgba(0,0,0,.35); flex: none; transition: transform .15s, opacity .2s; }
+.ccard.c-r { background: #e8423f; } .ccard.c-g { background: #38b25a; } .ccard.c-b { background: #2f7ae0; } .ccard.c-y { background: #f5c400; }
+.ccard.c-w { background: conic-gradient(#e8423f 0 25%, #2f7ae0 0 50%, #f5c400 0 75%, #38b25a 0); }
+.ccm { position: relative; width: 100%; height: 100%; display: grid; place-items: center; font-size: 22px; z-index: 0; }
+.ccm::before { content: ""; position: absolute; left: 15%; right: 15%; top: 19%; bottom: 19%; border-radius: 50%; background: #fff; transform: rotate(25deg); z-index: -1; }
+.ccard.c-r .ccm { color: #e8423f; } .ccard.c-g .ccm { color: #38b25a; } .ccard.c-b .ccm { color: #2f7ae0; } .ccard.c-y .ccm { color: #c79c00; } .ccard.c-w .ccm { color: #1b2140; }
+.ccm { line-height: 1; }
+.cc1, .cc2 { position: absolute; font-size: 11px; text-shadow: 0 1px 1px rgba(0,0,0,.4); }
+.cc1 { top: 3px; left: 5px; } .cc2 { bottom: 3px; right: 5px; transform: rotate(180deg); }
+.ccard.top { width: 76px; height: 114px; font-size: 18px; } .ccard.top .ccm { font-size: 30px; }
+.ccard.new { animation: g2pop .35s; }
+.cchand { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 12px auto 0; width: min(100%, 540px); }
+.cchand .ccard.ok { cursor: pointer; transform: translateY(-6px); box-shadow: 0 0 0 3px var(--good), 0 6px 12px rgba(0,0,0,.4); }
+.cchand .ccard.no { opacity: .45; }
+.cchand .ccard.sel { transform: translateY(-14px) scale(1.06); box-shadow: 0 0 0 3px #fff, 0 0 16px #fff; }
+.cchand .ccard.drawn { outline: 3px dashed #fff; outline-offset: 2px; }
+.ccpick { text-align: center; margin: 6px auto; }
+.ccpick p { margin: 0 0 8px; font-weight: 700; }
+.ccpick div { display: flex; gap: 8px; justify-content: center; }
+.ccpick button { all: unset; cursor: pointer; padding: 12px 14px; border-radius: 12px; color: #fff; font: 700 15px "Fredoka", sans-serif; text-transform: capitalize; box-shadow: 0 4px 0 rgba(0,0,0,.35); }
+.ccpick .c-r { background: #e8423f; } .ccpick .c-g { background: #38b25a; } .ccpick .c-b { background: #2f7ae0; } .ccpick .c-y { background: #f5c400; color: #1b2140; }
