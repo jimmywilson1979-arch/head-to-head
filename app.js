@@ -27,7 +27,7 @@ const LEVELS = { easy: "Easy", medium: "Medium", hard: "Hard" };
 // ===== WHO AM I =====
 const ME = { id: ls.get("h2h_pid", null), name: ls.get("h2h_name", "") };
 if (!ME.id) { ME.id = uid(); ls.set("h2h_pid", ME.id); }
-const PREF = Object.assign({ game: "ttt", level: "medium", sound: true, deck: "animals", kids: false, screens: "two", p2: "" }, ls.get("h2h_pref", {}));
+const PREF = Object.assign({ game: "ttt", level: "medium", sound: true, deck: "animals", kids: false, screens: "two", p2: "", pack: null, usePack: false }, ls.get("h2h_pref", {}));
 // One screen: two people take turns on this phone or tablet. Only games with nothing to hide and one player at a time.
 const ONE_SCREEN = ["ttt", "c4", "dots", "golf", "hm", "cw"];
 const savePref = () => ls.set("h2h_pref", PREF);
@@ -164,8 +164,10 @@ function sendState() { if (T && S) T.send({ t: "state", s: pub(S) }); }
 function newState(game, room) {
   return { sid: uid(), v: 0, room, game, host: ME.id, players: [], seats: [null, null], queue: [], phase: "lobby",
     board: null, sec: {}, turn: 0, starter: 0, result: null, last: null, lastBy: -1, fx: null, moves: 0, round: 0, draws: 0,
-    level: PREF.level, acks: {}, opts: { deck: PREF.deck, kids: !!PREF.kids } };
+    level: PREF.level, acks: {}, opts: packOpts({ deck: PREF.deck, kids: !!PREF.kids }) };
 }
+// picture pack choices that go into a game's options (the pictures themselves stay in packs.js)
+function packOpts(o) { const pk = PREF.pack && PACKS.get(PREF.pack); return Object.assign(o, { pack: pk ? pk.id : null, usePack: !!(pk && PREF.usePack) }); }
 const pl = id => S && S.players.find(p => p.id === id);
 // Same name on a new phone = your old place back (wins, seat and turn). Renames the old id everywhere in the game.
 function rebindId(root, a, b) {
@@ -346,6 +348,7 @@ function hostMsg(m) {
     return commit();
   }
   if (m.t === "again") { if (S.phase === "over" && S.seats.includes(m.pid)) { nextRound(); commit(); } return; }
+  if (m.t === "packreq") { if (m.id && PACKS.get(m.id) && !PKSEND[m.id + m.pid]) { PKSEND[m.id + m.pid] = 1; PACKS.sendTo(x => T && T.send(x), m.id, m.pid).finally(() => setTimeout(() => delete PKSEND[m.id + m.pid], 3000)); } return; }
   if (m.t === "bye") { const p = pl(m.pid); if (p) { toast(p.name + " left"); removePlayer(m.pid); commit(); } }
 }
 
@@ -383,6 +386,7 @@ function guestMsg(m) {
     render();
     return;
   }
+  if (m.t === "packpart") { if (m.to === ME.id) PACKS.receive(m).then(done => { if (done) toast("Pictures ready 🖼️"); render(); }); return; }
   if (m.t === "full" && m.pid === ME.id) { endGuest("That game is full (" + MAX_PLAYERS + " players)."); return; }
   if (m.t === "ended") endGuest("The host has ended the game.");
 }
@@ -587,7 +591,9 @@ function render() {
   if (S.phase === "lobby") { app.dataset.hk = ""; return renderLobby(); }
   if (S.game === "hockey" && S.phase === "play") { renderHockey(); return hkEnsure(); }
   app.dataset.hk = ""; hkEnsure();
-  return renderGame();
+  renderGame();
+  const np = guestNeedsPack(); // the other phone's pictures are still on their way
+  if (np) app.insertAdjacentHTML("afterbegin", `<div class="pkload">🖼️ Getting the pictures from ${esc(nameOf(S.host))}… ${np.total ? np.have + " of " + np.total : ""}</div>`);
 }
 
 function gamePicker(sel, attr = "data-pickgame", only = null) { // only: the games allowed right now; the rest are greyed out
@@ -641,6 +647,7 @@ function renderHome() {
     ${gamePicker(PREF.game)}
     ${PREF.game === "tt" ? `<div class="gap"></div><p class="label">Card Clash theme</p>${deckPicker(PREF.deck, "data-deck")}` : ""}
     ${KIDSG.includes(PREF.game) ? `<div class="gap"></div><p class="label">${kidsLabel(PREF.game)}</p>${kidsSeg(PREF.kids, "data-kids")}` : ""}
+    ${packRow(PREF.game)}
   </div>
   <button class="btn" data-act="host">📱 Play a friend<span class="sub">Get a QR code for them to scan</span></button>
   <div class="card" style="margin-top:22px">
@@ -736,10 +743,82 @@ function renderLobby() {
     ${n > 2 ? `<p class="small mut" style="margin:10px 0 0">Winner stays on. Everyone else waits their turn.</p>` : ""}
   </div>
   ${host ? `
-    <div class="card"><p class="label">Game</p>${gamePicker(S.game, "data-setgame")}${S.game === "tt" ? `<div class="gap"></div><p class="label">Theme</p>${deckPicker(S.opts && S.opts.deck, "data-setdeck")}` : ""}${KIDSG.includes(S.game) ? `<div class="gap"></div><p class="label">${kidsLabel(S.game)}</p>${kidsSeg(S.opts && S.opts.kids, "data-setkids")}` : ""}</div>
+    <div class="card"><p class="label">Game</p>${gamePicker(S.game, "data-setgame")}${S.game === "tt" ? `<div class="gap"></div><p class="label">Theme</p>${deckPicker(S.opts && S.opts.deck, "data-setdeck")}` : ""}${KIDSG.includes(S.game) ? `<div class="gap"></div><p class="label">${kidsLabel(S.game)}</p>${kidsSeg(S.opts && S.opts.kids, "data-setkids")}` : ""}${packRow(S.game)}</div>
     <button class="btn green" data-act="start" ${n < 2 ? "disabled" : ""}>${n < 2 ? `<span class="wait">⏳</span> Waiting for someone to join` : "▶ Start the game"}</button>` : ""}
   <div class="foot"><button class="iconbtn" data-act="leave">Leave</button></div>`;
 }
+
+// ----- picture packs -----
+const PKSEND = {};       // host: packs being sent right now (pack + guest)
+let pkAsked = 0;
+function packInUse() { // the pack the current game is using, if any
+  const b = S && S.board; if (!b) return null;
+  return b.pack || (b.wp && b.wp.pack) || (b.pdeck && b.pdeck.pack) || null;
+}
+function guestNeedsPack() { // guest: ask the host for the pictures this game uses (repeats until they've all arrived)
+  if (MODE !== "guest" || !T) return null;
+  const id = packInUse(); if (!id || PACKS.get(id)) return null;
+  if (Date.now() - pkAsked > 6000) { pkAsked = Date.now(); T.send({ t: "packreq", pid: ME.id, id }); }
+  return PACKS.progress(id) || { have: 0, total: 0 };
+}
+const pkPic = (id, i) => PACKS.pic(id, i);
+const PACKG = ["snap", "wi", "tt"];
+function packRow(game) {
+  if (!PACKG.includes(game)) return "";
+  const pk = PREF.pack && PACKS.get(PREF.pack), list = PACKS.list();
+  const needsDetails = game !== "snap" && pk && !pk.tags;
+  let h = `<div class="gap"></div><p class="label">Picture pack</p>`;
+  if (list.length > 1) h += `<div class="seg decks">${list.map(x => `<button class="${pk && pk.id === x.id ? "on" : ""}" data-pickpack="${x.id}">🖼️ ${esc(x.name)}</button>`).join("")}</div><div class="gap"></div>`;
+  if (pk && game !== "tt") h += `<div class="seg"><button class="${PREF.usePack ? "" : "on"}" data-usepack="0">Standard</button><button class="${PREF.usePack ? "on" : ""}" data-usepack="1">🖼️ ${esc(pk.name)}</button></div>`;
+  if (pk && game === "tt") h += `<p class="small mut" style="margin:2px 2px 0">${pk.deck ? "Pick 🖼️ " + esc(pk.name) + " as the theme above." : "Add details with Claude to make a Card Clash deck from your pictures."}</p>`;
+  if (pk && game === "snap") h += `<p class="small mut" style="margin:6px 2px 0">${pk.pics.length} pictures${pk.pics.length < (PREF.kids ? 31 : 57) ? `. A deck needs ${PREF.kids ? 31 : 57}, so emoji fill the gaps` : ""}.</p>`;
+  if (needsDetails && game === "wi") h += `<p class="small mut" style="margin:6px 2px 0">Who Is It? needs Claude to look at the pictures first, so it knows who wears a hat, has long hair and so on.</p>`;
+  h += `<div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap"><button class="iconbtn" data-act="packload">📥 ${pk ? "Load another pack" : "Load a picture pack"}</button>${needsDetails ? `<button class="iconbtn" data-act="packai">✨ Add details with Claude</button>` : ""}</div>`;
+  return h;
+}
+function packOverlay(html) {
+  let ov = document.getElementById("pkov");
+  if (!html) { if (ov) ov.remove(); return; }
+  if (!ov) { ov = document.createElement("div"); ov.id = "pkov"; document.body.append(ov); ov.addEventListener("click", packOverlayClick); }
+  ov.innerHTML = `<div class="pkbox">${html}</div>`;
+}
+let pkBusy = false;
+async function packOverlayClick(e) {
+  const a = e.target.closest("[data-pk]"); if (!a) return;
+  if (a.dataset.pk === "close") { if (!pkBusy) packOverlay(null); return; }
+  if (a.dataset.pk === "go") {
+    const key = (document.getElementById("pkkey").value || "").trim();
+    if (!/^sk-ant-/.test(key)) { document.getElementById("pkmsg").textContent = "That doesn't look like a Claude API key (it starts sk-ant-)."; return; }
+    PACKS.setKey(key); pkBusy = true;
+    const say = t => { const m = document.getElementById("pkmsg"); if (m) m.textContent = t; };
+    a.disabled = true; say("Choosing the Card Clash stats…");
+    try {
+      await PACKS.enrich(PREF.pack, key, (n, t) => say(`Looking at the pictures: ${n} of ${t}…`));
+      pkBusy = false; packOverlay(`<h2>All done ✨</h2><p>Claude has looked at every picture. Who Is It? and Card Clash can now use this pack.</p><button class="btn green" data-pk="close">Brilliant</button>`);
+      if (S && (MODE === "host" || MODE === "cpu")) { S.opts = packOpts(Object.assign({}, S.opts)); commit(); } else render();
+    } catch (err) { pkBusy = false; a.disabled = false; say((err && err.message) || "Something went wrong. Try again."); }
+  }
+}
+function packAI() {
+  const pk = PREF.pack && PACKS.get(PREF.pack); if (!pk) return;
+  packOverlay(`<h2>✨ Add details with Claude</h2>
+    <p>Claude looks at each of the ${pk.pics.length} pictures in <b>${esc(pk.name)}</b> once. It notes things like hats, hair and colours for Who Is It?, and makes up fun stats for Card Clash. It's saved on this phone afterwards.</p>
+    <p class="small mut">Uses your Claude API key (from platform.claude.com). It costs a few pence and takes about a minute.</p>
+    <input id="pkkey" class="field" type="password" placeholder="sk-ant-…" value="${esc(PACKS.getKey())}" autocomplete="off">
+    <p id="pkmsg" class="small" style="min-height:1.3em;margin:8px 0"></p>
+    <div class="row" style="gap:8px"><button class="btn alt" data-pk="close">Not now</button><button class="btn green" data-pk="go">Start</button></div>`);
+}
+const pkFile = Object.assign(document.createElement("input"), { type: "file", accept: ".json,application/json" });
+pkFile.addEventListener("change", async () => {
+  const f = pkFile.files && pkFile.files[0]; pkFile.value = ""; if (!f) return;
+  packOverlay(`<h2>📥 Loading pictures</h2><p id="pkmsg">Opening the pack…</p>`);
+  try {
+    const pk = await PACKS.fromFile(f, (n, t) => { const m = document.getElementById("pkmsg"); if (m) m.textContent = `Getting the pictures ready: ${n} of ${t}…`; });
+    PREF.pack = pk.id; PREF.usePack = true; savePref();
+    packOverlay(`<h2>🖼️ ${esc(pk.name)}</h2><p>${pk.pics.length} pictures are ready on this phone.${pk.tags ? "" : " Symbol Snap can use them now. For Who Is It? and Card Clash, tap <b>✨ Add details with Claude</b>."}</p><button class="btn green" data-pk="close">OK</button>`);
+    if (S && (MODE === "host" || MODE === "cpu")) { S.opts = packOpts(Object.assign({}, S.opts)); commit(); } else render();
+  } catch (e) { packOverlay(`<h2>That didn't work</h2><p>That file isn't a picture pack. Use the file from the Letter Quest picture page or Pack Builder.</p><button class="btn" data-pk="close">OK</button>`); }
+});
 
 // ----- boards -----
 function boardTTT(c) {
@@ -919,7 +998,9 @@ function preloadDeck(id) {
   });
 }
 function cardPic(d, id) { // the card's picture (its emoji shows until the picture is ready, or if it can't load)
-  const c = d.cards[id], src = d.img ? d.img(id, c) : null;
+  const c = d.cards[id];
+  if (d.pics) { const src = pkPic(d.pack, d.pics[id]); return `<div class="ttpic isart">${src ? `<img src="${src}" alt="${esc(c[0])}" class="ready" style="object-position:50% 30%">` : `<span class="ph">${c[1]}</span>`}</div>`; }
+  const src = d.img ? d.img(id, c) : null;
   if (!src) return `<div class="ttpic">${c[1]}</div>`;
   const ok = READY.has(src);
   return `<div class="ttpic ${d.flag ? "isflag" : "isart"}">${ok ? "" : `<span class="ph">${c[1]}</span>`}<img src="${src}" alt="${esc(c[0])}" fetchpriority="high" class="${ok ? "ready" : ""}" onload="this.classList.add('ready')" onerror="this.remove()"></div>`;
@@ -933,7 +1014,7 @@ function ttCard(d, id, o = {}) {
 }
 const ttBack = (seat, label) => `<div class="ttcard back p${seat}"><div class="ttbackin"><span>?</span></div><div class="ttname">${label}</div></div>`;
 function boardTT(c) {
-  const b = S.board, me = c.me, d = GAMES.tt.DECKS[b.deck], left = me < 0 ? 0 : me, right = 1 - left;
+  const b = S.board, me = c.me, d = b.pdeck || GAMES.tt.DECKS[b.deck], left = me < 0 ? 0 : me, right = 1 - left;
   const nm = seat => S.seats[seat] === ME.id ? "Your" : esc(nameOf(S.seats[seat])) + "'s";
   let h = "";
   if (b.last && (ttRevealPending() || S.phase === "over")) {
@@ -955,7 +1036,14 @@ function boardTT(c) {
   return h + `<div class="ttinfo">${info}</div><p class="center small mut" style="margin-top:6px">${d.icon} ${esc(d.name)}: ${esc(d.note)}</p>`;
 }
 // painted portrait (img/faces/<name>.webp); the drawn face is the fallback if a picture is missing
+function wiWP() { return S && S.board && S.board.wp; } // a function so the game icons can use faceSVG at start-up
+const wiCount = () => wiWP() ? wiWP().ids.length : GAMES.wi.PEOPLE.length;
+const wiName = i => wiWP() ? wiWP().names[i] : GAMES.wi.PEOPLE[i].name;
+const wiQ = qi => wiWP() ? wiWP().q[qi] : GAMES.wi.QUESTIONS[qi][0];
+const wiQN = () => wiWP() ? wiWP().q.length : GAMES.wi.QUESTIONS.length;
 function faceSVG(i) {
+  const wp = wiWP();
+  if (wp) { const src = pkPic(wp.pack, wp.ids[i]); return src ? `<img class="face" src="${src}" alt="">` : `<svg viewBox="0 0 100 100" class="face"><rect width="100" height="100" fill="#e6dfcf"/><text x="50" y="62" text-anchor="middle" font-size="34" fill="#9a8f78">${i + 1}</text></svg>`; }
   const n = GAMES.wi.PEOPLE[i].name.toLowerCase();
   return `<img class="face" src="img/faces/${n}.webp" alt="" decoding="async" onerror="this.outerHTML=faceDrawn(${i})">`;
 }
@@ -988,7 +1076,7 @@ function faceDrawn(i) {
   return `<svg viewBox="0 0 100 110" class="face">${back}<path d="M16 110 Q18 88 50 88 Q82 88 84 110Z" fill="${SHIRT[i % SHIRT.length]}"/><rect x="43" y="78" width="14" height="12" fill="${sk}"/>${ears}<ellipse cx="50" cy="54" rx="26" ry="29" fill="${sk}"/>${beard}${top}${hat}${brows}${eyes}${glasses}${cheeks}${freck}${extra}${tache}${mouth}</svg>`;
 }
 function wiCard(i, o = {}) {
-  return `<${o.btn ? "button" : "div"} class="wic ${o.down ? "down" : ""} ${o.cls || ""}" ${o.attr || ""}>${faceSVG(i)}<span>${esc(GAMES.wi.PEOPLE[i].name)}</span></${o.btn ? "button" : "div"}>`;
+  return `<${o.btn ? "button" : "div"} class="wic ${o.down ? "down" : ""} ${o.cls || ""}" ${o.attr || ""}>${faceSVG(i)}<span>${esc(wiName(i))}</span></${o.btn ? "button" : "div"}>`;
 }
 function wiSecret() { // which person this phone is hiding
   const me = mySeat(); if (me < 0) return null;
@@ -998,8 +1086,8 @@ function wiSecret() { // which person this phone is hiding
   return S.board.reveal ? S.board.reveal[me] : null;
 }
 function boardWI(c) {
-  const b = S.board, me = c.me, g = GAMES.wi, P = g.PEOPLE, Q = g.QUESTIONS;
-  if (WI.k !== secKey()) WI = { k: secKey(), pick: Math.floor(Math.random() * P.length), guessing: false, qOpen: false };
+  const b = S.board, me = c.me, N = wiCount();
+  if (WI.k !== secKey()) WI = { k: secKey(), pick: Math.floor(Math.random() * N), guessing: false, qOpen: false };
   const nm = seat => isMe(S.seats[seat]) ? "You" : esc(nameOf(S.seats[seat]));
   if (me >= 0 && b.stage === "pick") {
     if (!b.ready[me] && !(pending && pending.mv && pending.mv.pick != null)) {
@@ -1013,12 +1101,12 @@ function boardWI(c) {
   const last = b.log[b.log.length - 1];
   let lastLine = "";
   if (last) {
-    if (last.q != null) lastLine = `<b>${nm(last.seat)}</b> asked: ${esc(Q[last.q][0])} <span class="ans ${last.a ? "y" : "n"}">${last.a ? "Yes" : "No"}</span>`;
-    else lastLine = `<b>${nm(last.seat)}</b> guessed <b>${esc(P[last.guess].name)}</b>: <span class="ans ${last.ok ? "y" : "n"}">${last.ok ? "Right!" : "Wrong"}</span>`;
+    if (last.q != null) lastLine = `<b>${nm(last.seat)}</b> asked: ${esc(wiQ(last.q))} <span class="ans ${last.a ? "y" : "n"}">${last.a ? "Yes" : "No"}</span>`;
+    else lastLine = `<b>${nm(last.seat)}</b> guessed <b>${esc(wiName(last.guess))}</b>: <span class="ans ${last.ok ? "y" : "n"}">${last.ok ? "Right!" : "Wrong"}</span>`;
   }
   const mine = wiSecret();
   const canAct = c.myTurn && !pending;
-  const grid = `<div class="wigrid ${WI.guessing && canAct ? "guessing" : ""}">${P.map((_, i) => {
+  const grid = `<div class="wigrid ${WI.guessing && canAct ? "guessing" : ""}">${Array.from({ length: N }, (_, i) => {
     const isDown = down[i], canGuess = WI.guessing && canAct && !isDown;
     const rev = b.reveal && b.reveal[1 - view] === i;
     return wiCard(i, { btn: canGuess, down: isDown && !rev, cls: (rev ? "rev " : "") + (canGuess ? "can" : ""), attr: canGuess ? `data-wiguess="${i}"` : "" });
@@ -1028,13 +1116,13 @@ function boardWI(c) {
     if (WI.guessing) controls = `<p class="center small" style="margin:8px 0">Tap the person you think it is. Wrong guess and your go ends.</p><button class="btn alt" data-act="wiguessoff">Back to questions</button>`;
     else {
       const asked = new Set(b.log.filter(l => l.seat === me && l.q != null).map(l => l.q));
-      controls = `<div class="wiqs">${Q.map(([t], qi) => `<button data-wiask="${qi}" class="${asked.has(qi) ? "asked" : ""}">${esc(t)}</button>`).join("")}</div>
+      controls = `<div class="wiqs">${Array.from({ length: wiQN() }, (_, qi) => `<button data-wiask="${qi}" class="${asked.has(qi) ? "asked" : ""}">${esc(wiQ(qi))}</button>`).join("")}</div>
         <button class="btn" data-act="wiguesson" style="margin-top:12px">🎯 I know who it is!</button>`;
     }
   }
-  const hist = b.log.length > 1 ? `<details class="wihist"><summary>All questions (${b.log.length})</summary>${b.log.slice().reverse().map(l => `<div>${l.q != null ? `${nm(l.seat)}: ${esc(Q[l.q][0])} <span class="ans ${l.a ? "y" : "n"}">${l.a ? "Yes" : "No"}</span>` : `${nm(l.seat)} guessed ${esc(P[l.guess].name)}: <span class="ans ${l.ok ? "y" : "n"}">${l.ok ? "Right" : "Wrong"}</span>`}</div>`).join("")}</details>` : "";
+  const hist = b.log.length > 1 ? `<details class="wihist"><summary>All questions (${b.log.length})</summary>${b.log.slice().reverse().map(l => `<div>${l.q != null ? `${nm(l.seat)}: ${esc(wiQ(l.q))} <span class="ans ${l.a ? "y" : "n"}">${l.a ? "Yes" : "No"}</span>` : `${nm(l.seat)} guessed ${esc(wiName(l.guess))}: <span class="ans ${l.ok ? "y" : "n"}">${l.ok ? "Right" : "Wrong"}</span>`}</div>`).join("")}</details>` : "";
   return `${lastLine ? `<div class="wilast">${lastLine}</div>` : ""}
-    <div class="wiinfo">${me >= 0 && mine != null ? `<span class="wime">${faceSVG(mine)}<span>You are <b>${esc(P[mine].name)}</b></span></span>` : ""}<span class="mut small">${me >= 0 ? "Your board" : nm(view) + "'s board"}: ${left} left${me >= 0 ? ` · ${esc(nameOf(S.seats[1 - me]))}: ${b.down[1 - me].filter(x => !x).length} left` : ""}</span></div>
+    <div class="wiinfo">${me >= 0 && mine != null ? `<span class="wime">${faceSVG(mine)}<span>You are <b>${esc(wiName(mine))}</b></span></span>` : ""}<span class="mut small">${me >= 0 ? "Your board" : nm(view) + "'s board"}: ${left} left${me >= 0 ? ` · ${esc(nameOf(S.seats[1 - me]))}: ${b.down[1 - me].filter(x => !x).length} left` : ""}</span></div>
     ${controls}${grid}${hist}`;
 }
 // ----- mini golf -----
@@ -1423,7 +1511,8 @@ function renderHockey() {
   hkPointer(document.getElementById("hkcv")); hkBar();
 }
 function deckPicker(sel, attr) {
-  return `<div class="seg decks">${Object.values(GAMES.tt.DECKS).map(d => `<button class="${sel === d.id ? "on" : ""}" ${attr}="${d.id}">${d.icon} ${esc(d.name)}</button>`).join("")}</div>`;
+  const pk = PREF.pack && PACKS.get(PREF.pack), extra = pk && pk.deck ? `<button class="${sel === "pack" ? "on" : ""}" ${attr}="pack">🖼️ ${esc(pk.name)}</button>` : "";
+  return `<div class="seg decks">${Object.values(GAMES.tt.DECKS).map(d => `<button class="${sel === d.id ? "on" : ""}" ${attr}="${d.id}">${d.icon} ${esc(d.name)}</button>`).join("")}${extra}</div>`;
 }
 
 function renderGame() {
@@ -1489,7 +1578,7 @@ function renderGame() {
     if (S.game === "dots") sub = `Boxes ${S.board.score[0]} – ${S.board.score[1]}`;
     if (S.game === "rps") sub = `${S.board.score[0]} – ${S.board.score[1]}`;
     if (S.game === "bs") sub = "Every ship sunk";
-    if (S.game === "wi" && S.board.reveal) sub = `${esc(nameOf(S.seats[0]))} was ${esc(GAMES.wi.PEOPLE[S.board.reveal[0]].name)}, ${esc(nameOf(S.seats[1]))} was ${esc(GAMES.wi.PEOPLE[S.board.reveal[1]].name)}`;
+    if (S.game === "wi" && S.board.reveal) sub = `${esc(nameOf(S.seats[0]))} was ${esc(wiName(S.board.reveal[0]))}, ${esc(nameOf(S.seats[1]))} was ${esc(wiName(S.board.reveal[1]))}`;
     if (S.game === "hockey") sub = `${S.board.score[0]} – ${S.board.score[1]}`;
     if (S.game === "golf") { const t = sd => S.board.scores[sd].reduce((x, y) => x + y, 0); sub = `Total strokes ${t(0)} – ${t(1)} (lowest wins)`; }
     if (S.game === "hm") sub = `Words ${S.board.score[0]} – ${S.board.score[1]}${S.board.prev ? `. The last word was ${S.board.prev.word} ${S.board.prev.pic || ""}` : ""}`;
@@ -1518,7 +1607,7 @@ function renderGame() {
       ${me >= 0 || host ? `<button class="btn green" data-act="again">🔁 Play again</button>` : `<p class="center mut">Waiting for the next game…</p>`}
       ${MODE === "host" ? `<button class="btn" data-act="tolobby">🎮 Choose another game</button>` : ""}
       ${MODE === "guest" ? `<button class="btn" data-act="opensuggest">💡 Suggest another game</button>` : ""}
-      ${MODE === "cpu" ? `<div class="card"><p class="label">Switch game</p>${gamePicker(S.game, "data-setgame", S.pass ? ONE_SCREEN : null)}${S.game === "tt" ? `<div class="gap"></div><p class="label">Card Clash theme</p>${deckPicker(S.opts && S.opts.deck, "data-setdeck")}` : ""}${KIDSG.includes(S.game) ? `<div class="gap"></div><p class="label">${kidsLabel(S.game)}</p>${kidsSeg(S.opts && S.opts.kids, "data-setkids")}` : ""}${MODE === "cpu" && !S.pass ? `<div class="gap"></div><p class="label">Computer level</p>${levelSeg(S.level, "data-setlevel")}` : ""}</div>` : ""}
+      ${MODE === "cpu" ? `<div class="card"><p class="label">Switch game</p>${gamePicker(S.game, "data-setgame", S.pass ? ONE_SCREEN : null)}${S.game === "tt" ? `<div class="gap"></div><p class="label">Card Clash theme</p>${deckPicker(S.opts && S.opts.deck, "data-setdeck")}` : ""}${KIDSG.includes(S.game) ? `<div class="gap"></div><p class="label">${kidsLabel(S.game)}</p>${kidsSeg(S.opts && S.opts.kids, "data-setkids")}` : ""}${MODE === "cpu" && !S.pass ? `<div class="gap"></div><p class="label">Computer level</p>${levelSeg(S.level, "data-setlevel")}` : ""}${MODE === "cpu" && !S.pass ? packRow(S.game) : ""}</div>` : ""}
     </div>`;
   }
 
@@ -1767,7 +1856,8 @@ function snCard(card, kids, opts = {}) {
     const rad = ring ? (kids ? 31 : 33) : 0, x0 = 50 + Math.cos(ang) * rad, y0 = 50 + Math.sin(ang) * rad;
     const sz = (kids ? 21 : 16.5) * (ring ? .85 + R() * .35 : 1.1 + R() * .15), rot = Math.round(R() * 70 - 35);
     const cls = opts.hit === x ? "hit" : SNL.bad && SNL.bad.c === opts.id && SNL.bad.x === x && Date.now() < SNL.until ? "bad" : "";
-    return `<button class="sym ${cls}" data-sn="${x}" data-snc="${opts.id || ""}" style="left:${x0.toFixed(1)}%;top:${y0.toFixed(1)}%;--sz:${sz.toFixed(1)};--r:${rot}deg">${list[x]}</button>`;
+    const face = x >= 1000 ? ((src => src ? `<img src="${src}" alt="" draggable="false">` : `<b class="pw">${x - 999}</b>`)(pkPic(S.board.pack, x - 1000))) : list[x];
+    return `<button class="sym ${x >= 1000 ? "pic" : ""} ${cls}" data-sn="${x}" data-snc="${opts.id || ""}" style="left:${x0.toFixed(1)}%;top:${y0.toFixed(1)}%;--sz:${sz.toFixed(1)};--r:${rot}deg">${face}</button>`;
   }).join("");
   return `<div class="sncard ${opts.cls || ""}">${syms}</div>`;
 }
@@ -1871,9 +1961,15 @@ window.addEventListener("pointerdown", e => {
 
 // ===== TAPS =====
 app.addEventListener("click", e => {
-  const el = e.target.closest("[data-suggest],[data-act],[data-mv],[data-fire],[data-rps],[data-tt],[data-wiask],[data-wiguess],[data-deck],[data-setdeck],[data-pickgame],[data-setgame],[data-level],[data-setlevel],[data-kick],[data-key],[data-cwclue],[data-cwcell],[data-kids],[data-setkids],[data-flag]");
+  const el = e.target.closest("[data-usepack],[data-pickpack],[data-suggest],[data-act],[data-mv],[data-fire],[data-rps],[data-tt],[data-wiask],[data-wiguess],[data-deck],[data-setdeck],[data-pickgame],[data-setgame],[data-level],[data-setlevel],[data-kick],[data-key],[data-cwclue],[data-cwcell],[data-kids],[data-setkids],[data-flag]");
   if (!el) return;
   const d = el.dataset;
+  if (d.usepack != null || d.pickpack) {
+    if (d.pickpack) PREF.pack = d.pickpack; else PREF.usePack = d.usepack === "1";
+    savePref();
+    if (S && (MODE === "host" || MODE === "cpu")) { S.opts = packOpts(Object.assign({}, S.opts)); if (S.phase === "over") nextRound(); return commit(); }
+    return render();
+  }
   if (d.suggest) { if (MODE === "guest" && T) { T.send({ t: "suggest", pid: ME.id, game: d.suggest }); SUGGEST = false; toast(`Suggested ${GAMES[d.suggest].name} to ${nameOf(S.host)}`); render(); } return; }
   if (d.mv != null) return myMove(Number(d.mv));
   if (d.flag != null) { if (!raceRev()) myMove({ fq: Number(d.flag), n: S.board.n }); return; }
@@ -1953,11 +2049,13 @@ app.addEventListener("click", e => {
     case "shuffle": DRAFT = { k: secKey(), ships: GAMES.bs.randomFleet() }; Snd.pick(); return render();
     case "ready": return myMove({ ships: draftFleet() });
     case "ttnext": TTSEEN = ttKey(); render(); return maybeCPU();
-    case "wishuffle": { const n = GAMES.wi.PEOPLE.length; let x; do { x = Math.floor(Math.random() * n); } while (x === WI.pick); WI.pick = x; Snd.pick(); return render(); }
+    case "wishuffle": { const n = wiCount(); let x; do { x = Math.floor(Math.random() * n); } while (x === WI.pick); WI.pick = x; Snd.pick(); return render(); }
     case "wiready": return myMove({ pick: WI.pick });
     case "wiguesson": WI.guessing = true; return render();
     case "hkview": PREF.hkView = hkSplit() ? "full" : "split"; savePref(); return render();
     case "wiguessoff": WI.guessing = false; return render();
+    case "packload": return pkFile.click();
+    case "packai": return packAI();
   }
 });
 app.addEventListener("keydown", e => {
@@ -1975,7 +2073,7 @@ app.addEventListener("input", e => {
 // ===== START =====
 // keep pictures saved on the phone so they appear instantly next time
 if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => { });
-(function boot() {
+PACKS.refreshList().finally(function boot() {
   const j = (P.get("join") || "").toUpperCase().replace(/[^A-Z]/g, "");
   if (j.length === 4) {
     joinCode = j;
@@ -1985,4 +2083,4 @@ if ("serviceWorker" in navigator && location.protocol === "https:") navigator.se
     if (MODE === "guest") return startJoining(j);
   }
   render();
-})();
+});

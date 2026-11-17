@@ -30,6 +30,15 @@ Up to 8 phones can join. Two play at a time and the rest wait in line.
 **Winner stays on:** the loser goes to the back of the line and the next person takes their place (on a draw, whoever went first steps off).
 The host can switch games between rounds.
 
+## Picture packs
+Use your own pictures in **Symbol Snap**, **Who Is It?** and **Card Clash**.
+1. Pick one of those games, then tap **📥 Load a picture pack** and choose a pack file: the one from the Letter Quest picture page (e.g. `george-disney-pictures.json`) or one from Pack Builder.
+2. **Symbol Snap** can use it straight away. Packs with fewer than 57 pictures (31 for Kids) are topped up with emoji.
+3. For **Who Is It?** and **Card Clash**, tap **✨ Add details with Claude** once. Claude looks at each picture to note hats, hair and colours, and makes up five fun stats for the cards. It uses your Claude API key and is saved on the phone.
+4. In Card Clash, pick 🖼️ the pack as the theme. In the other two, choose 🖼️ the pack under Picture pack.
+
+Only the host needs the pack. The other phone gets the pictures automatically when the game starts, which takes a few seconds the first time.
+
 ## Play the computer
 Pick **Easy**, **Medium** or **Hard** and press **Play the computer** – no second phone needed. Good for testing on your own.
 For the race games (Flag Quiz, Symbol Snap, Spot the Difference, Word Search) the level sets how fast the computer is, and in Flag Quiz how often it knows the hard flags.

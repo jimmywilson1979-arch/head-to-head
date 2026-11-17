@@ -425,3 +425,15 @@ img.face { aspect-ratio: 1; object-fit: cover; border-radius: 7px; background: #
 .status.me.p1 { color: var(--p1); }
 .gpick.off { opacity: .35; filter: grayscale(1); pointer-events: none; }
 .gpick.off b::after { content: "Needs 2 phones"; display: block; font-size: .7em; font-weight: 600; }
+
+/* ----- picture packs ----- */
+.sncard .sym.pic { padding: 0; }
+.sncard .sym.pic img, .sncard .sym.pic .pw { width: calc(var(--sz) * 1.18cqw); height: calc(var(--sz) * 1.18cqw); border-radius: 50%; object-fit: cover; display: block; box-shadow: 0 1px 4px rgba(0,0,0,.35), 0 0 0 2px #fff; pointer-events: none; user-select: none; -webkit-user-drag: none; }
+.sncard .sym.pic .pw { display: grid; place-items: center; background: #e6dfcf; color: #8a7f68; font-size: calc(var(--sz) * .45cqw); }
+.sncard .sym.pic.hit img, .sncard .sym.pic.bad img { box-shadow: 0 0 0 4px var(--good); }
+.sncard .sym.pic.bad img { box-shadow: 0 0 0 4px #ff5d73; }
+#pkov { position: fixed; inset: 0; z-index: 50; background: rgba(5,8,20,.72); display: grid; place-items: center; padding: 18px; }
+#pkov .pkbox { background: var(--card, #1b2140); color: var(--ink, #fff); border-radius: 18px; padding: 18px; width: min(440px, 100%); box-shadow: 0 10px 40px rgba(0,0,0,.5); }
+#pkov h2 { margin: 0 0 8px; }
+#pkov p { margin: 0 0 10px; line-height: 1.4; }
+.pkload { background: rgba(108,140,255,.18); border: 1px solid rgba(108,140,255,.45); border-radius: 12px; padding: 8px 12px; margin: 0 0 10px; font-size: 14px; text-align: center; }

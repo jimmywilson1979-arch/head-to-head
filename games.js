@@ -3,6 +3,8 @@
 "use strict";
 (function (root) {
   const rnd = a => a[Math.floor(Math.random() * a.length)];
+  // Picture packs (packs.js): the host's phone has the pack; games copy what they need into the board for the other phone.
+  const packOf = S => { const o = S.opts || {}; return o.pack && root.PACKS ? root.PACKS.get(o.pack) : null; };
 
   // ===== NOUGHTS & CROSSES =====
   const L3 = [[0, 1, 2], [3, 4, 5], [6, 7, 8], [0, 3, 6], [1, 4, 7], [2, 5, 8], [0, 4, 8], [2, 4, 6]];
@@ -339,11 +341,12 @@
       ],
     },
   };
-  const ttVal = (d, id, st) => DECKS[d].cards[id][2 + st];
+  const ttDeck = S => S.board.pdeck || DECKS[S.board.deck];   // pdeck: a deck made from a picture pack
+  const ttVal = (D, id, st) => D.cards[id][2 + st];
   function ttAI(S, seat, level) {
-    const d = S.board.deck, nStats = DECKS[d].stats.length, top = S.board.top;
+    const d = ttDeck(S), nStats = d.stats.length, top = S.board.top;
     if (level === "easy") return Math.floor(Math.random() * nStats);
-    const mine = new Set((S.sec[seat] || []).concat(S.sec.pot || [])), others = DECKS[d].cards.map((_, i) => i).filter(i => !mine.has(i) && i !== top);
+    const mine = new Set((S.sec[seat] || []).concat(S.sec.pot || [])), others = d.cards.map((_, i) => i).filter(i => !mine.has(i) && i !== top);
     let best = -1, pick = 0;
     for (let st = 0; st < nStats; st++) {
       const v = ttVal(d, top, st); let sc = 0;
@@ -382,14 +385,23 @@
     ["Are they wearing earrings?", p => has(p, "e")], ["Are they showing their teeth?", p => has(p, "s")],
     ["Do they have short hair?", p => p.style === "short"], ["Do they have freckles?", p => has(p, "f")],
   ];
+  // A board made from a picture pack carries its own people (wp.ids), questions (wp.q) and answers (wp.a[question][person]).
+  const wiN = S => S.board && S.board.wp ? S.board.wp.ids.length : PEOPLE.length;
+  const wiNQ = S => S.board && S.board.wp ? S.board.wp.q.length : QUESTIONS.length;
+  const wiA = (S, qi, i) => S.board && S.board.wp ? !!S.board.wp.a[qi][i] : !!QUESTIONS[qi][1](PEOPLE[i]);
+  function wiFromPack(pk) {
+    const TQ = root.PACKS.TAGQ, ids = shuffle(pk.pics.map((_, i) => i)).slice(0, 24);
+    const keep = TQ.map((_, k) => k).filter(k => { const y = ids.filter(i => pk.tags[i][k]).length; return y > 0 && y < ids.length; });
+    return { pack: pk.id, ids, names: ids.map(i => pk.names[i] || "?"), q: keep.map(k => TQ[k][1]), a: keep.map(k => ids.map(i => pk.tags[i][k] ? 1 : 0)) };
+  }
   function wiAI(S, seat, level) {
-    const b = S.board;
-    if (b.stage === "pick") return { pick: Math.floor(Math.random() * PEOPLE.length) };
-    const up = PEOPLE.map((_, i) => i).filter(i => !b.down[seat][i]);
+    const b = S.board, N = wiN(S);
+    if (b.stage === "pick") return { pick: Math.floor(Math.random() * N) };
+    const up = Array.from({ length: N }, (_, i) => i).filter(i => !b.down[seat][i]);
     if (up.length === 1) return { guess: up[0] };
     if (level === "easy" && up.length <= 3 && Math.random() < 0.5) return { guess: rnd(up) };
     const asked = new Set(b.log.filter(l => l.seat === seat && l.q != null).map(l => l.q));
-    const split = QUESTIONS.map(([, f], qi) => { const yes = up.filter(i => f(PEOPLE[i])).length; return { qi, yes, no: up.length - yes }; })
+    const split = Array.from({ length: wiNQ(S) }, (_, qi) => { const yes = up.filter(i => wiA(S, qi, i)).length; return { qi, yes, no: up.length - yes }; })
       .filter(o => !asked.has(o.qi));
     const useful = split.filter(o => o.yes && o.no);
     if (!useful.length) return { guess: rnd(up) };
@@ -987,21 +999,28 @@
     tt: {
       id: "tt", name: "Card Clash", local: false, MAX_ROUNDS: 30,
       init(S) {
-        const deck = (S.opts && DECKS[S.opts.deck]) ? S.opts.deck : "animals";
-        const ids = DECKS[deck].cards.map((_, i) => i);
+        const pk = packOf(S), fromPack = !!(S.opts && S.opts.deck === "pack" && pk && pk.deck);
+        const deck = fromPack ? "pack" : (S.opts && DECKS[S.opts.deck]) ? S.opts.deck : "animals";
+        let pdeck = null;
+        if (fromPack) {
+          const pick = shuffle(pk.pics.map((_, i) => i)).slice(0, 32);
+          pdeck = { id: "pack", pack: pk.id, name: pk.name, icon: "🖼️", note: "Stats made up by Claude, just for fun.",
+            stats: pk.deck.stats.map(l => ({ l, u: "" })), cards: pick.map(i => [pk.names[i] || "Card", "🖼️", ...pk.deck.vals[i]]), pics: pick };
+        }
+        const ids = (pdeck || DECKS[deck]).cards.map((_, i) => i);
         for (let i = ids.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [ids[i], ids[j]] = [ids[j], ids[i]]; }
         const half = Math.floor(ids.length / 2);
         S.sec = { 0: ids.slice(0, half), 1: ids.slice(half, half * 2), pot: [] };
         S.turn = S.starter;
         // top: the chooser's card. peek: the other player's own card, so they can see it while they wait
-        S.board = { deck, count: [half, half], pot: 0, top: S.sec[S.starter][0], peek: S.sec[1 - S.starter][0], last: null, rounds: 0 };
+        S.board = { deck, pdeck, count: [half, half], pot: 0, top: S.sec[S.starter][0], peek: S.sec[1 - S.starter][0], last: null, rounds: 0 };
       },
       waiting: turnWaiting,
       move(S, seat, mv) {
-        const b = S.board, d = DECKS[b.deck];
+        const b = S.board, d = ttDeck(S);
         if (!Number.isInteger(mv) || mv < 0 || mv >= d.stats.length) return false;
         const a = S.sec[seat].shift(), z = S.sec[1 - seat].shift();
-        const va = ttVal(b.deck, a, mv), vz = ttVal(b.deck, z, mv);
+        const va = ttVal(d, a, mv), vz = ttVal(d, z, mv);
         const w = va > vz ? seat : vz > va ? 1 - seat : "draw";
         const cards = seat === 0 ? [a, z] : [z, a];
         if (w === "draw") S.sec.pot.push(a, z);
@@ -1023,27 +1042,29 @@
     wi: {
       id: "wi", name: "Who Is It?", local: false, PEOPLE, QUESTIONS,
       init(S) {
-        S.board = { stage: "pick", ready: [false, false], down: [Array(PEOPLE.length).fill(false), Array(PEOPLE.length).fill(false)], log: [], reveal: null };
+        const pk = S.opts && S.opts.usePack ? packOf(S) : null;
+        const wp = pk && pk.tags && pk.pics.length >= 6 ? wiFromPack(pk) : null, N = wp ? wp.ids.length : PEOPLE.length;
+        S.board = { stage: "pick", ready: [false, false], down: [Array(N).fill(false), Array(N).fill(false)], log: [], reveal: null, wp };
         S.sec = { 0: null, 1: null }; S.turn = -1;
       },
       waiting: (S, seat) => S.board.stage === "pick" ? !S.board.ready[seat] : S.turn === seat,
       move(S, seat, mv) {
         const b = S.board; if (!mv || typeof mv !== "object") return false;
         if (b.stage === "pick") {
-          if (b.ready[seat] || !Number.isInteger(mv.pick) || mv.pick < 0 || mv.pick >= PEOPLE.length) return false;
+          if (b.ready[seat] || !Number.isInteger(mv.pick) || mv.pick < 0 || mv.pick >= wiN(S)) return false;
           S.sec[seat] = mv.pick; b.ready[seat] = true; S.last = null;
           if (b.ready[0] && b.ready[1]) { b.stage = "play"; S.turn = S.starter; }
           return "ready";
         }
         if (S.turn !== seat) return false;
-        const target = PEOPLE[S.sec[1 - seat]];
-        if (Number.isInteger(mv.ask) && QUESTIONS[mv.ask]) {
-          const a = !!QUESTIONS[mv.ask][1](target);
-          PEOPLE.forEach((p, i) => { if (!!QUESTIONS[mv.ask][1](p) !== a) b.down[seat][i] = true; });
+        const target = S.sec[1 - seat], N = wiN(S);
+        if (Number.isInteger(mv.ask) && mv.ask >= 0 && mv.ask < wiNQ(S)) {
+          const a = wiA(S, mv.ask, target);
+          for (let i = 0; i < N; i++) if (wiA(S, mv.ask, i) !== a) b.down[seat][i] = true;
           b.log.push({ seat, q: mv.ask, a }); S.last = b.log.length; S.turn = 1 - seat;
           return a ? "yes" : "no";
         }
-        if (Number.isInteger(mv.guess) && mv.guess >= 0 && mv.guess < PEOPLE.length && !b.down[seat][mv.guess]) {
+        if (Number.isInteger(mv.guess) && mv.guess >= 0 && mv.guess < N && !b.down[seat][mv.guess]) {
           const ok = mv.guess === S.sec[1 - seat];
           b.log.push({ seat, guess: mv.guess, ok }); S.last = b.log.length;
           if (ok) { S.result = { w: seat, line: [] }; b.reveal = { 0: S.sec[0], 1: S.sec[1] }; }
@@ -1052,7 +1073,7 @@
         }
         return false;
       },
-      ai: wiAI,
+      ai: wiAI, n: wiN, nq: wiNQ,
     },
     golf: {
       id: "golf", name: "Mini Golf", local: false, HOLES, GW, GH, BALL_R, CUP_R, MAXV, MAX_STROKES, sim: golfSim,
@@ -1231,10 +1252,14 @@
       id: "snap", name: "Symbol Snap", local: false, kidsOpt: true, reveal: REV.snap,
       init(S) {
         const kids = isKids(S), n = kids ? 5 : 7, syms = (kids ? SN_KIDS : SN_SYM).length;
-        const map = shuffle(Array.from({ length: syms }, (_, i) => i));
+        // With a picture pack, pictures are numbered 1000 + their place in the pack; small packs are topped up with emoji
+        const pk = S.opts && S.opts.usePack ? packOf(S) : null;
+        let pool = Array.from({ length: syms }, (_, i) => i);
+        if (pk) { const pics = shuffle(pk.pics.map((_, i) => 1000 + i)).slice(0, syms); pool = pics.concat(shuffle(pool).slice(0, syms - pics.length)); }
+        const map = shuffle(pool);
         const deck = shuffle(snDeck(n).map(k => ({ s: shuffle(k.map(x => map[x])), r: Math.floor(Math.random() * 1e9) })));
         S.sec = { deck };
-        S.board = { kids, target: kids ? 8 : 10, cards: [deck.pop(), deck.pop()], mid: deck.pop(), left: deck.length, n: 0, score: [0, 0], prev: null };
+        S.board = { kids, target: kids ? 8 : 10, cards: [deck.pop(), deck.pop()], mid: deck.pop(), left: deck.length, n: 0, score: [0, 0], prev: null, pack: pk ? pk.id : null };
         S.turn = -1;
       },
       waiting: () => true,
