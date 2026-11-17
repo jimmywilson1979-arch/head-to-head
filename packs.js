@@ -81,6 +81,25 @@
       if (onProgress) onProgress(i + 1, items.length);
     }
     if (!pics.length) throw new Error("no pictures");
+    // A pack with a key (e.g. George's Disney pack) is the same pack every time it's sent: a newer copy replaces the
+    // old one, and Claude's details for pictures that were already there are kept, so only new ones need adding.
+    if (p.key) {
+      const id = "k" + hash(String(p.key));
+      let old = await load(id);
+      if (!old) { // first keyed copy: take over an older copy of the same pack loaded before packs had keys
+        const all = await tx("readonly", st => st.getAll()).catch(() => []);
+        old = (all || []).find(x => x.id[0] === "p" && x.name === name) || null;
+        if (old) { await tx("readwrite", st => st.delete(old.id)).catch(() => { }); delete MEM[old.id]; }
+      }
+      const np = { type: "h2h-pack", id, name, theme: p.theme || "", names, pics, tags: null, deck: null, made: p.made || new Date().toISOString() };
+      const prev = old && old.tags && old.deck ? { stats: old.deck.stats, byName: {} } : old && old.prev ? old.prev : null;
+      if (old && old.tags && old.deck) old.names.forEach((n, i) => { if (n) prev.byName[n] = { t: old.tags[i], v: old.deck.vals[i] }; });
+      if (prev) {
+        if (names.every(n => n && prev.byName[n])) { np.tags = names.map(n => prev.byName[n].t); np.deck = { stats: prev.stats, vals: names.map(n => prev.byName[n].v) }; }
+        else np.prev = prev;
+      }
+      return keep(np);
+    }
     const id = "p" + hash(name + "|" + names.join("|") + "|" + pics.length + "|" + (p.made || ""));
     const old = await load(id);
     return keep(old || { type: "h2h-pack", id, name, theme: p.theme || "", names, pics, tags: null, deck: null, made: p.made || new Date().toISOString() });
@@ -133,9 +152,9 @@
   const json = (t, open) => { const close = open === "[" ? "]" : "}", a = t.indexOf(open), z = t.lastIndexOf(close); return JSON.parse(t.slice(a, z + 1)); };
   async function enrich(id, key, onProgress) {
     const p = MEM[id] || await load(id); if (!p) throw new Error("Pack not found.");
-    const named = p.names.filter(Boolean).length;
-    // 1. five fun Top Trumps stats that suit this pack
-    const pick = await claude(key, [{ type: "text", text:
+    const named = p.names.filter(Boolean).length, prev = p.prev || null;
+    // 1. five fun Top Trumps stats that suit this pack (a newer copy of a pack keeps the stats it already had)
+    const pick = prev ? JSON.stringify({ stats: prev.stats }) : await claude(key, [{ type: "text", text:
       `I'm making a Top Trumps style card game for a family from a picture pack called "${p.name}"${p.theme ? ` (theme: ${p.theme})` : ""}. ` +
       (named ? `Some of the cards: ${p.names.filter(Boolean).slice(0, 40).join(", ")}. ` : "The pictures are family photos with no names. ") +
       `Choose 5 fun, kid-friendly stats that suit these characters, each scored 1 to 100 where higher is better (e.g. Bravery, Magic, Speed, Kindness, Cheekiness). ` +
@@ -144,10 +163,12 @@
     if (stats.length < 5) stats = ["Bravery", "Magic", "Speed", "Kindness", "Cheekiness"];
     // 2. look at the pictures a few at a time
     const tags = Array(p.pics.length).fill(null), vals = Array(p.pics.length).fill(null), names = p.names.slice();
+    const todo = [];   // pictures Claude still needs to look at
+    p.pics.forEach((_, i) => { const k = prev && names[i] && prev.byName[names[i]]; if (k) { tags[i] = k.t; vals[i] = k.v; } else todo.push(i); });
     const B = 6;
-    for (let s = 0; s < p.pics.length; s += B) {
+    for (let s = 0; s < todo.length; s += B) {
       const content = [];
-      for (let i = s; i < Math.min(p.pics.length, s + B); i++) {
+      for (const i of todo.slice(s, s + B)) {
         content.push({ type: "text", text: `Picture ${i}${p.names[i] ? ` (named "${p.names[i]}")` : ""}:` });
         content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: p.pics[i].split(",")[1] } });
       }
@@ -164,10 +185,10 @@
         vals[i] = stats.map((_, k) => Math.max(1, Math.min(100, Math.round(Number(o.s && o.s[k]) || 50))));
         if (!names[i] && o.name) names[i] = String(o.name).slice(0, 24);
       }
-      if (onProgress) onProgress(Math.min(p.pics.length, s + B), p.pics.length);
+      if (onProgress) onProgress(Math.min(todo.length, s + B), todo.length);
     }
     for (let i = 0; i < p.pics.length; i++) { if (!tags[i]) tags[i] = TAGQ.map(() => 0); if (!vals[i]) vals[i] = stats.map(() => 50); if (!names[i]) names[i] = "Card " + (i + 1); }
-    p.names = names; p.tags = tags; p.deck = { stats, vals };
+    p.names = names; p.tags = tags; p.deck = { stats, vals }; delete p.prev;
     await keep(p);
     return p;
   }

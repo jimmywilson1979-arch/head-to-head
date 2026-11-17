@@ -40,6 +40,8 @@ h2 span{font-family:inherit;font-weight:400;font-size:.85rem;color:var(--muted)}
 .rowbtns{display:flex;gap:4px;flex:none;flex-wrap:wrap;justify-content:flex-end}
 .rowbtns button,.rowbtns .go{padding:8px 11px;border-radius:10px;font-size:.95rem}
 .hide-done .row.done{display:none}
+.addform{margin-top:6px}
+.addform input{font:inherit;color:inherit;background:var(--bg);border:2px solid var(--blank);border-radius:12px;padding:10px 12px;width:100%}
 a:focus-visible,button:focus-visible,input:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
 </style>
 </head>
@@ -78,8 +80,16 @@ const LEVELS = [
   ["Hard", [["RAPUNZEL","Tangled"],["ALADDIN",""],["JASMINE","Aladdin"],["KRISTOFF","Frozen"],["SEBASTIAN","The Little Mermaid crab"],["FLOUNDER","The Little Mermaid"],["BAGHEERA","The Jungle Book"],["MAXIMUS","Tangled horse"],["THUMPER","Bambi rabbit"],["CINDERELLA",""],["PINOCCHIO",""],["HERCULES",""],["MIRABEL","Encanto"]]]
 ];
 
-const cap = w => w.charAt(0) + w.slice(1).toLowerCase();
-const ALL = LEVELS.flatMap(l => l[1].map(i => i[0]));
+const cap = w => w.toLowerCase().replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
+const BUILT_IN = LEVELS.flatMap(l => l[1].map(i => i[0]));
+// Characters Tom adds himself: [{ w: "BAYMAX", clue: "..." }]. They go in the pack and become new Letter Quest words.
+const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+let EXTRA = lsGet("lqpp-extra", []).filter(x => x && x.w);
+const saveExtra = () => lsSet("lqpp-extra", EXTRA);
+const allWords = () => BUILT_IN.concat(EXTRA.map(x => x.w));
+// Letters, spaces and hyphens only, as the game shows them (e.g. "Little John" becomes "LITTLE JOHN").
+const toWord = s => String(s || "").toUpperCase().replace(/[^A-Z \-]/g, "").replace(/\s+/g, " ").replace(/-+/g, "-").trim().replace(/^[ -]+|[ -]+$/g, "");
 const $ = id => document.getElementById(id);
 
 // ---------- storage (IndexedDB, so all 67 fit easily) ----------
@@ -128,7 +138,14 @@ function draw(){
     h.innerHTML = lv + "<span></span>";
     h.lastChild.textContent = items.filter(i => pics[i[0]]).length + " of " + items.length + " done";
     const list = document.createElement("div"); list.className = "list";
-    items.forEach(([w, film]) => {
+    items.forEach(([w, film]) => list.append(row(w, film)));
+    g.append(h, list);
+  });
+  drawExtra(g);
+  const all = allWords(), n = all.filter(w => pics[w]).length;
+  $("count").textContent = n + " of " + all.length + " pictures added";
+}
+function row(w, film, extra){
       const has = !!pics[w];
       const r = document.createElement("div"); r.className = "row" + (has ? " done" : "");
       const th = document.createElement("div"); th.className = "thumb";
@@ -139,21 +156,45 @@ function draw(){
       const bt = document.createElement("div"); bt.className = "rowbtns";
       const a = document.createElement("a"); a.className = "go"; a.textContent = "Find"; a.target = "_blank"; a.rel = "noopener";
       a.href = "https://www.google.com/search?tbm=isch&q=" + encodeURIComponent((cap(w) + " " + film + " Disney character").replace(/\s+/g, " "));
+      if (extra) { const sm = who.querySelector("small"); if (sm && !has) sm.textContent = "Your character · no picture yet"; }
       const add = document.createElement("button"); add.className = has ? "" : "primary"; add.textContent = has ? "Change" : "Add";
       add.setAttribute("aria-label", (has ? "Change picture for " : "Add picture for ") + cap(w));
       add.onclick = () => { target = w; $("picIn").click(); };
       bt.append(a, add);
-      if (has) {
-        const rm = document.createElement("button"); rm.textContent = "✕"; rm.setAttribute("aria-label", "Remove picture for " + cap(w));
-        rm.onclick = async () => { await delPic(w); draw(); };
+      if (has || extra) {
+        const rm = document.createElement("button"); rm.textContent = "✕";
+        rm.setAttribute("aria-label", (extra ? "Remove " : "Remove picture for ") + cap(w));
+        rm.onclick = async () => {
+          if (extra) { if (rm.dataset.sure !== "1") { rm.dataset.sure = "1"; rm.textContent = "Sure?"; setTimeout(() => { rm.dataset.sure = ""; rm.textContent = "✕"; }, 3000); return; }
+            EXTRA = EXTRA.filter(x => x.w !== w); saveExtra(); }
+          await delPic(w).catch(() => {}); draw();
+        };
         bt.append(rm);
       }
-      r.append(th, who, bt); list.append(r);
-    });
-    g.append(h, list);
-  });
-  const n = ALL.filter(w => pics[w]).length;
-  $("count").textContent = n + " of " + ALL.length + " pictures added";
+      r.append(th, who, bt); return r;
+}
+function drawExtra(g){
+  const h = document.createElement("h2");
+  h.innerHTML = "Your own characters<span></span>";
+  h.lastChild.textContent = EXTRA.length ? EXTRA.filter(x => pics[x.w]).length + " of " + EXTRA.length + " done" : "";
+  const list = document.createElement("div"); list.className = "list";
+  EXTRA.forEach(x => list.append(row(x.w, x.film || "", true)));
+  const form = document.createElement("div"); form.className = "panel addform";
+  form.innerHTML = `<b style="font-family:Fredoka,sans-serif">Add a character</b>
+    <input id="newName" maxlength="20" placeholder="Name, e.g. Baymax" autocomplete="off" autocapitalize="words">
+    <input id="newClue" maxlength="60" placeholder="Clue for George (optional), e.g. Big white robot" autocomplete="off">
+    <div class="btns"><button class="primary" id="newAdd">Add character</button></div>
+    <p class="muted" style="font-size:.85rem">They go in the pack with the others, and become new words in Letter Quest.</p>`;
+  g.append(h, list, form);
+  form.querySelector("#newAdd").onclick = () => {
+    const w = toWord(form.querySelector("#newName").value), letters = (w.match(/[A-Z]/g) || []).length;
+    if (letters < 2 || letters > 14) return note("Type a name with 2 to 14 letters.", true);
+    if (allWords().includes(w)) return note(cap(w) + " is already on the list.", true);
+    const clue = form.querySelector("#newClue").value.replace(/\s+/g, " ").trim().slice(0, 60);
+    EXTRA.push({ w, clue }); saveExtra(); draw();
+    note(cap(w) + " added. Now tap Find, save a picture, then tap Add.");
+    target = w; // so a quick Add picture straight after goes to the new character
+  };
 }
 
 let target = null;
@@ -167,9 +208,10 @@ $("picIn").onchange = async e => {
 // ---------- the pack file ----------
 function packFile(){
   const pictures = {};
-  ALL.forEach(w => { if (pics[w]) pictures[w] = pics[w]; });
+  allWords().forEach(w => { if (pics[w]) pictures[w] = pics[w]; });
   const n = Object.keys(pictures).length;
-  const json = JSON.stringify({ type: "letter-quest-pictures", version: 1, theme: THEME, made: new Date().toISOString(), pictures });
+  const extras = EXTRA.filter(x => pics[x.w]).map(x => ({ word: x.w, clue: x.clue || "" }));
+  const json = JSON.stringify({ type: "letter-quest-pictures", version: 2, key: "george-disney", theme: THEME, made: new Date().toISOString(), extras, pictures });
   return { n, file: new File([json], "george-disney-pictures.json", { type: "application/json" }) };
 }
 $("sendBtn").onclick = async () => {
@@ -199,7 +241,9 @@ $("packIn").onchange = async e => {
     const p = JSON.parse(await f.text());
     if (p.type !== "letter-quest-pictures" || !p.pictures) throw 0;
     let n = 0;
-    for (const w of ALL) if (typeof p.pictures[w] === "string" && p.pictures[w].startsWith("data:image/")) { await putPic(w, p.pictures[w]); n++; }
+    (Array.isArray(p.extras) ? p.extras : []).forEach(x => { const w = toWord(x && x.word); if (w && !allWords().includes(w)) EXTRA.push({ w, clue: String(x.clue || "").slice(0, 60) }); });
+    saveExtra();
+    for (const w of allWords()) if (typeof p.pictures[w] === "string" && p.pictures[w].startsWith("data:image/")) { await putPic(w, p.pictures[w]); n++; }
     note("Opened the pack: " + n + " pictures added here."); draw();
   } catch { note("That file isn't a picture pack.", true); }
 };

@@ -835,7 +835,7 @@ async function loadPackFile(f) {
   try {
     const pk = await PACKS.fromFile(f, (n, t) => { const m = document.getElementById("pkmsg"); if (m) m.textContent = `Getting the pictures ready: ${n} of ${t}…`; });
     PREF.pack = pk.id; PREF.usePack = true; savePref();
-    packOverlay(`<h2>🖼️ ${esc(pk.name)}</h2><p>${pk.pics.length} pictures are ready on this phone.${pk.tags ? "" : " Symbol Snap can use them now. For Who Is It? and Card Clash, tap <b>✨ Add details with Claude</b>."}</p><button class="btn green" data-pk="close">OK</button>`);
+    packOverlay(`<h2>🖼️ ${esc(pk.name)}</h2><p>${pk.pics.length} pictures are ready on this phone.${pk.tags ? "" : pk.prev ? ` This replaces the older copy of this pack. Claude's details are kept for the pictures it already had; tap <b>✨ Add details with Claude</b> to add just the new ones for Who Is It? and Card Clash. Symbol Snap can use them all now.` : " Symbol Snap can use them now. For Who Is It? and Card Clash, tap <b>✨ Add details with Claude</b>."}</p><button class="btn green" data-pk="close">OK</button>`);
     if (S && (MODE === "host" || MODE === "cpu")) { S.opts = packOpts(Object.assign({}, S.opts)); commit(); } else render();
   } catch (e) { packOverlay(`<h2>That didn't work</h2><p>That file isn't a picture pack. Use the file from the Letter Quest picture page or Pack Builder.</p><button class="btn" data-pk="close">OK</button>`); }
 }
