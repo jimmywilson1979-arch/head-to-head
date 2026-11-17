@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Pack Builder</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<style>
+/* Layout: one column. Event name → add photos → tap to pick → name & order the picks → send. Warm amber to match Memory Pieces. */
+:root{--bg:#FBF5EC;--card:#fff;--ink:#2B2118;--muted:#7A6A58;--soft:#F1E6D6;--line:#E3D3BC;--accent:#E08A1E;--accent-ink:#3D2200;--good:#2E8B57;--focus:#2F6FD6;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#1B1611;--card:#271F17;--ink:#F6EDE1;--muted:#BFAE98;--soft:#33291F;--line:#4A3C2C;--accent:#F2A541;--accent-ink:#2A1700;--good:#5CC98A;--focus:#7FB0FF;color-scheme:dark}}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.4 "Atkinson Hyperlegible",system-ui,sans-serif;padding:16px 16px 48px}
+.wrap{max-width:640px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+h1{font-family:Fredoka,system-ui,sans-serif;font-size:1.6rem;margin:0}
+h2{font-family:Fredoka,sans-serif;font-weight:600;font-size:1.2rem;margin:0;display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+h2 small{font-family:inherit;font-weight:400;font-size:.9rem;color:var(--muted);font-variant-numeric:tabular-nums}
+p{margin:0}
+.muted{color:var(--muted)}
+.panel{background:var(--card);border-radius:18px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+input[type=text]{font:inherit;color:inherit;background:var(--bg);border:2px solid var(--line);border-radius:12px;padding:10px 12px;flex:1;min-width:0}
+button,.btn{font:inherit;border:0;cursor:pointer;font-family:Fredoka,sans-serif;font-weight:600;border-radius:12px;padding:11px 16px;background:var(--soft);color:var(--ink);display:inline-block}
+.primary{background:var(--accent);color:var(--accent-ink)}
+.danger{color:#B4441C}
+button:disabled{opacity:.4;cursor:default}
+button:focus-visible,.btn:focus-within,input:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+.note{min-height:1.4em;font-weight:700;color:var(--good)}
+.note.bad{color:#B4441C}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:6px}
+.ph{position:relative;aspect-ratio:1;border-radius:10px;overflow:hidden;padding:0;background:var(--soft);border:3px solid transparent}
+.ph img{width:100%;height:100%;object-fit:cover;display:block}
+.ph[aria-pressed=true]{border-color:var(--accent)}
+.ph .n{position:absolute;top:4px;right:4px;min-width:26px;height:26px;border-radius:13px;background:var(--accent);color:var(--accent-ink);font-family:Fredoka,sans-serif;font-size:.9rem;display:grid;place-items:center;padding:0 6px}
+.ph[aria-pressed=false] .n{display:none}
+.ph[aria-pressed=false] img{opacity:.75}
+.picks{display:flex;flex-direction:column;gap:6px}
+.pick{display:flex;gap:8px;align-items:center;background:var(--bg);border-radius:12px;padding:6px}
+.pick img{width:60px;height:60px;border-radius:8px;object-fit:cover;flex:none}
+.pick input{padding:8px 10px}
+.pick .mv{display:flex;flex-direction:column;gap:2px}
+.pick .mv button{padding:2px 10px;border-radius:8px;font-size:.9rem}
+.pick .x{padding:8px 11px}
+.empty{color:var(--muted);text-align:center;padding:14px 4px}
+.bar{position:sticky;bottom:10px;background:var(--card);border-radius:16px;padding:12px;box-shadow:0 4px 18px #0002;display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between}
+.bar b{font-family:Fredoka,sans-serif;font-variant-numeric:tabular-nums}
+.small{font-size:.85rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Pack Builder</h1>
+  <p class="muted">Turn a gallery into one picture pack for Memory Pieces. Choose the photos, tap the best ones, add names if you like, then send the pack to the family.</p>
+
+  <section class="panel">
+    <h2>1. Name the pack</h2>
+    <input type="text" id="packName" placeholder="e.g. Kelly &amp; James's Wedding" maxlength="60" autocomplete="off">
+  </section>
+
+  <section class="panel">
+    <h2>2. Add photos</h2>
+    <div class="row">
+      <label class="btn primary"><input type="file" id="files" accept="image/*" multiple hidden>Choose photos</label>
+    </div>
+    <div class="row">
+      <input type="text" id="albumIn" placeholder="Or paste a guest album link or code" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <button id="albumAdd">Add album</button>
+    </div>
+    <p class="note" id="addNote" aria-live="polite"></p>
+  </section>
+
+  <section class="panel">
+    <h2>3. Tap the best ones <small id="pool"></small></h2>
+    <div class="row small">
+      <button id="selAll">Pick all</button>
+      <button id="selNone">Pick none</button>
+      <button id="clearAll" class="danger">Start a new pack</button>
+    </div>
+    <div class="grid" id="grid"></div>
+  </section>
+
+  <section class="panel">
+    <h2>4. Names and order <small id="pickCount"></small></h2>
+    <p class="muted small">Names are optional. Add who's in the photo (like "Grandad" or "Flower girls") for the name and quiz games.</p>
+    <div class="picks" id="picks"></div>
+  </section>
+
+  <div class="bar">
+    <span><b id="barCount">0 photos</b> <span class="muted small" id="barSize"></span></span>
+    <span class="row">
+      <button id="saveBtn">Save to phone</button>
+      <button id="sendBtn" class="primary">Send pack</button>
+    </span>
+  </div>
+  <p class="note" id="note" aria-live="polite"></p>
+  <p class="muted small">Photos stay on this phone until you send the pack. On the family's tablet: Memory Pieces → press and hold the lock → Load picture pack.</p>
+</div>
+<script>
+const API = "https://uqwlmegbelyqtbegxqlz.supabase.co/functions/v1/puzzle";
+const $ = id => document.getElementById(id);
+const store = { get(k, d){ try { const v = localStorage.getItem("pb_" + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+                set(k, v){ try { localStorage.setItem("pb_" + k, JSON.stringify(v)); } catch {} } };
+
+// ---------- photo storage (IndexedDB: big photos fit easily) ----------
+const DB = (() => { let p;
+  const open = () => p ??= new Promise((res, rej) => { const r = indexedDB.open("packbuilder", 1); r.onupgradeneeded = () => r.result.createObjectStore("photos", { keyPath: "id" }); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+  const tx = async (mode, fn) => { const db = await open(); return new Promise((res, rej) => { const t = db.transaction("photos", mode), q = fn(t.objectStore("photos")); t.oncomplete = () => res(q && q.result); t.onerror = () => rej(t.error); }); };
+  return { all: () => tx("readonly", s => s.getAll()), put: o => tx("readwrite", s => s.put(o)), clear: () => tx("readwrite", s => s.clear()) };
+})();
+function scaled(src, max, q){ const k = Math.min(1, max / Math.max(src.width, src.height)), c = document.createElement("canvas");
+  c.width = Math.round(src.width * k); c.height = Math.round(src.height * k); c.getContext("2d").drawImage(src, 0, 0, c.width, c.height);
+  return new Promise(r => c.toBlob(r, "image/jpeg", q)); }
+
+// state: photos = everything added; picks = ordered ids going in the pack; names = id → name
+let photos = [], urls = {};
+let picks = store.get("picks", []), names = store.get("names", {});
+const save = () => { store.set("picks", picks); store.set("names", names); };
+
+async function load(){
+  Object.values(urls).forEach(u => URL.revokeObjectURL(u)); urls = {};
+  photos = (await DB.all().catch(() => [])).sort((a, b) => a.added - b.added);
+  photos.forEach(p => urls[p.id] = URL.createObjectURL(p.thumb || p.blob));
+  const ids = new Set(photos.map(p => p.id)); picks = picks.filter(id => ids.has(id)); save();
+  draw();
+}
+
+function note(el, t, bad){ $(el).textContent = t; $(el).className = "note" + (bad ? " bad" : ""); }
+
+// ---------- adding ----------
+async function addBlob(blob, id, n){
+  const bmp = await createImageBitmap(blob, { imageOrientation: "from-image" });
+  const big = await scaled(bmp, 1400, .82), thumb = await scaled(bmp, 300, .78); bmp.close();
+  await DB.put({ id, blob: big, thumb, added: Date.now() + n });
+}
+$("files").addEventListener("change", async e => {
+  const list = [...e.target.files]; e.target.value = ""; if (!list.length) return;
+  try { await navigator.storage?.persist?.(); } catch {}
+  let n = 0;
+  for (const f of list) {
+    note("addNote", `Adding… ${n + 1} of ${list.length}`);
+    try { await addBlob(f, "p_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7), n); n++; } catch {}
+  }
+  await load();
+  note("addNote", n === list.length ? `${n} photo${n === 1 ? "" : "s"} added. Tap the ones you want in the pack.` : `${n} of ${list.length} added (some couldn't be opened).`, n < list.length);
+});
+
+const parseCode = s => { s = String(s || "").trim(); const m = s.match(/album=([\w-]{6,40})/); return m ? m[1] : /^[\w-]{6,40}$/.test(s) ? s : null; };
+$("albumAdd").onclick = async () => {
+  const code = parseCode($("albumIn").value);
+  if (!code) return note("addNote", "That doesn't look like an album link.", true);
+  note("addNote", "Opening the album…");
+  try {
+    const r = await fetch(API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "album", code }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !Array.isArray(d.items)) throw 0;
+    if (!$("packName").value.trim() && d.name) { $("packName").value = d.name; store.set("name", d.name); }
+    const have = new Set(photos.map(p => p.id)); let n = 0, k = 0;
+    for (const it of d.items) {
+      k++; const id = "a_" + code + "_" + it.key; if (have.has(id)) continue;
+      note("addNote", `Downloading ${k} of ${d.items.length}…`);
+      try { const b = await fetch(it.url).then(x => { if (!x.ok) throw 0; return x.blob(); }); await addBlob(b, id, k); n++; } catch {}
+    }
+    $("albumIn").value = ""; await load();
+    note("addNote", n ? `${n} photo${n === 1 ? "" : "s"} added from ${d.name || "the album"}.` : "No new photos in that album.");
+  } catch { note("addNote", "Couldn't open the album. Check the link and the internet.", true); }
+};
+
+// ---------- picking ----------
+function toggle(id){ const i = picks.indexOf(id); if (i >= 0) picks.splice(i, 1); else picks.push(id); save(); draw(); }
+$("grid").addEventListener("click", e => { const b = e.target.closest(".ph"); if (b) toggle(b.dataset.id); });
+$("selAll").onclick = () => { photos.forEach(p => { if (!picks.includes(p.id)) picks.push(p.id); }); save(); draw(); };
+$("selNone").onclick = () => { picks = []; save(); draw(); };
+$("clearAll").onclick = async () => {
+  if ($("clearAll").dataset.sure !== "1") { $("clearAll").dataset.sure = "1"; $("clearAll").textContent = "Tap again to clear everything";
+    setTimeout(() => { $("clearAll").dataset.sure = ""; $("clearAll").textContent = "Start a new pack"; }, 4000); return; }
+  $("clearAll").dataset.sure = ""; $("clearAll").textContent = "Start a new pack";
+  await DB.clear(); picks = []; names = {}; save(); $("packName").value = ""; store.set("name", ""); await load(); note("addNote", "Cleared. Ready for a new pack.");
+};
+
+function draw(){
+  const g = $("grid"); g.innerHTML = "";
+  if (!photos.length) g.innerHTML = '<p class="empty" style="grid-column:1/-1">No photos yet. Choose some above.</p>';
+  photos.forEach(p => {
+    const b = document.createElement("button"); const i = picks.indexOf(p.id);
+    b.className = "ph"; b.dataset.id = p.id; b.setAttribute("aria-pressed", i >= 0);
+    b.setAttribute("aria-label", i >= 0 ? "Picked, number " + (i + 1) : "Not picked");
+    b.innerHTML = '<img alt=""><span class="n"></span>'; b.firstChild.src = urls[p.id]; b.lastChild.textContent = i + 1;
+    g.append(b);
+  });
+  $("pool").textContent = photos.length ? photos.length + " added" : "";
+  const pl = $("picks"); pl.innerHTML = "";
+  if (!picks.length) pl.innerHTML = '<p class="empty">Tap photos above to put them in the pack.</p>';
+  picks.forEach((id, i) => {
+    const r = document.createElement("div"); r.className = "pick";
+    r.innerHTML = '<img alt=""><input type="text" maxlength="24" placeholder="Name (optional)"><span class="mv"><button aria-label="Move up">▲</button><button aria-label="Move down">▼</button></span><button class="x" aria-label="Take out of pack">✕</button>';
+    r.querySelector("img").src = urls[id];
+    const inp = r.querySelector("input"); inp.value = names[id] || ""; inp.oninput = () => { names[id] = inp.value; save(); };
+    const [up, dn] = r.querySelectorAll(".mv button");
+    up.disabled = i === 0; dn.disabled = i === picks.length - 1;
+    up.onclick = () => { [picks[i - 1], picks[i]] = [picks[i], picks[i - 1]]; save(); draw(); };
+    dn.onclick = () => { [picks[i + 1], picks[i]] = [picks[i], picks[i + 1]]; save(); draw(); };
+    r.querySelector(".x").onclick = () => toggle(id);
+    pl.append(r);
+  });
+  const n = picks.length;
+  $("pickCount").textContent = n ? n + " in the pack" : "";
+  $("barCount").textContent = n + " photo" + (n === 1 ? "" : "s");
+  const mb = photos.filter(p => picks.includes(p.id)).reduce((s, p) => s + p.blob.size, 0) * 1.37 / 1048576;
+  $("barSize").textContent = n ? "about " + (mb < 1 ? "<1" : Math.round(mb)) + " MB" : "";
+  $("sendBtn").disabled = $("saveBtn").disabled = !n;
+}
+
+// ---------- the pack file ----------
+const toData = b => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(b); });
+const slug = s => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40);
+async function makePack(){
+  const name = $("packName").value.trim() || "Photo pack";
+  const byId = Object.fromEntries(photos.map(p => [p.id, p]));
+  const list = [];
+  for (const id of picks) { const p = byId[id]; if (!p) continue;
+    list.push({ id: id.replace(/[^\w-]/g, "").slice(-24), name: (names[id] || "").trim(), data: await toData(p.blob) }); }
+  const json = JSON.stringify({ type: "photo-pack", version: 1, name, code: slug(name) || "pack", made: new Date().toISOString(), photos: list });
+  return { n: list.length, file: new File([json], (slug(name) || "photo-pack") + ".json", { type: "application/json" }) };
+}
+function saveFile(file, n){
+  const a = document.createElement("a"); a.href = URL.createObjectURL(file); a.download = file.name;
+  document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  note("note", `Saved ${file.name} with ${n} photos to your Downloads.`);
+}
+$("sendBtn").onclick = async () => {
+  note("note", "Making the pack…"); const { n, file } = await makePack();
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: $("packName").value.trim() || "Photo pack" }); note("note", `Pack sent with ${n} photos.`); }
+    catch (err) { if (err && err.name !== "AbortError") saveFile(file, n); else note("note", ""); }
+  } else saveFile(file, n);
+};
+$("saveBtn").onclick = async () => { note("note", "Making the pack…"); const { n, file } = await makePack(); saveFile(file, n); };
+
+$("packName").value = store.get("name", "");
+$("packName").oninput = () => store.set("name", $("packName").value);
+load().catch(() => note("addNote", "This browser won't let the page keep photos. Try Chrome.", true));
+</script>
+</body>
+</html>
