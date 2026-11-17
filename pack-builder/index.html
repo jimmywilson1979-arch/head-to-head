@@ -238,9 +238,29 @@ $("sendBtn").onclick = async () => {
 };
 $("saveBtn").onclick = async () => { note("note", "Making the pack…"); const { n, file } = await makePack(); saveFile(file, n); };
 
+// ---------- photos handed over from the Picture Portal organiser ("Make a pack") ----------
+// The organiser leaves { name, items:[{key,url}] } in this phone's storage (same site), then opens this page.
+async function importFromPortal(){
+  const job = store.get("import", null); if (!job || !Array.isArray(job.items)) return;
+  try { localStorage.removeItem("pb_import"); } catch {}
+  if (location.hash === "#import") history.replaceState(null, "", location.pathname);
+  if (job.name && !$("packName").value.trim()) { $("packName").value = job.name; store.set("name", job.name); }
+  try { await navigator.storage?.persist?.(); } catch {}
+  const have = new Set(photos.map(p => p.id)); let n = 0, k = 0, failed = 0;
+  for (const it of job.items) {
+    k++; const id = "pp_" + String(it.key).replace(/[^\w-]/g, "_");
+    if (have.has(id)) { if (!picks.includes(id)) picks.push(id); continue; }
+    note("addNote", `Bringing in photos from Picture Portal… ${k} of ${job.items.length}`);
+    try { const b = await fetch(it.url).then(x => { if (!x.ok) throw 0; return x.blob(); }); await addBlob(b, id, k); picks.push(id); n++; }
+    catch { failed++; }
+  }
+  save(); await load();
+  note("addNote", `${n} photo${n === 1 ? "" : "s"} brought in from Picture Portal and picked.` + (failed ? ` ${failed} couldn't be fetched. Try Make a pack again for those.` : " Add names and send."), !!failed);
+}
+
 $("packName").value = store.get("name", "");
 $("packName").oninput = () => store.set("name", $("packName").value);
-load().catch(() => note("addNote", "This browser won't let the page keep photos. Try Chrome.", true));
+load().then(importFromPortal).catch(() => note("addNote", "This browser won't let the page keep photos. Try Chrome.", true));
 </script>
 </body>
 </html>
