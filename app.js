@@ -772,7 +772,8 @@ function packRow(game) {
   if (pk && game !== "tt") h += `<div class="seg"><button class="${PREF.usePack ? "" : "on"}" data-usepack="0">Standard</button><button class="${PREF.usePack ? "on" : ""}" data-usepack="1">🖼️ ${esc(pk.name)}</button></div>`;
   if (pk && game === "tt") h += `<p class="small mut" style="margin:2px 2px 0">${pk.deck ? "Pick 🖼️ " + esc(pk.name) + " as the theme above." : "Add details with Claude to make a Card Clash deck from your pictures."}</p>`;
   if (pk && game === "snap") h += `<p class="small mut" style="margin:6px 2px 0">${pk.pics.length} pictures${pk.pics.length < (PREF.kids ? 31 : 57) ? `. A deck needs ${PREF.kids ? 31 : 57}, so emoji fill the gaps` : ""}.</p>`;
-  if (needsDetails && game === "wi") h += `<p class="small mut" style="margin:6px 2px 0">Who Is It? needs Claude to look at the pictures first, so it knows who wears a hat, has long hair and so on.</p>`;
+  if (needsDetails && game === "wi") h += `<p class="small" style="margin:6px 2px 0;color:var(--gold, #ffd23f)">⚠️ Not ready for Who Is It? yet: tap <b>✨ Add details with Claude</b> below so it knows who wears a hat, has long hair and so on. Until then you'll get the standard faces.</p>`;
+  if (pk && pk.tags && game !== "snap") h += `<p class="small" style="margin:6px 2px 0;color:var(--good, #51e08a)">✓ Claude has added the details, so ${game === "wi" ? "Who Is It?" : "Card Clash"} can use these pictures.</p>`;
   h += `<div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap"><button class="iconbtn" data-act="packload">📥 ${pk ? "Load another pack" : "Load a picture pack"}</button>${needsDetails ? `<button class="iconbtn" data-act="packai">✨ Add details with Claude</button>` : ""}${pk ? `<button class="iconbtn" data-act="packshare">📤 Share this pack</button>` : ""}</div>`;
   return h;
 }
@@ -795,7 +796,12 @@ async function packOverlayClick(e) {
     try {
       await PACKS.enrich(PREF.pack, key, (n, t) => say(`Looking at the pictures: ${n} of ${t}…`));
       pkBusy = false; packOverlay(`<h2>All done ✨</h2><p>Claude has looked at every picture. Who Is It? and Card Clash can now use this pack.</p><button class="btn green" data-pk="close">Brilliant</button>`);
-      if (S && (MODE === "host" || MODE === "cpu")) { S.opts = packOpts(Object.assign({}, S.opts)); commit(); } else render();
+      if (S && (MODE === "host" || MODE === "cpu")) {
+        S.opts = packOpts(Object.assign({}, S.opts));
+        // a Who Is It? game that hasn't really started yet switches to the pictures straight away
+        if (S.game === "wi" && S.phase === "play" && S.board && !S.board.wp && S.board.stage === "pick" && !S.board.ready.some((r, i) => r && S.seats[i] !== "cpu")) { clearTimeout(cpuTimer); cpuTimer = null; startRound(); }
+        commit();
+      } else render();
     } catch (err) { pkBusy = false; a.disabled = false; say((err && err.message) || "Something went wrong. Try again."); }
   }
 }
@@ -1098,12 +1104,14 @@ function boardWI(c) {
   const b = S.board, me = c.me, N = wiCount();
   if (WI.k !== secKey()) WI = { k: secKey(), pick: Math.floor(Math.random() * N), guessing: false, qOpen: false };
   const nm = seat => isMe(S.seats[seat]) ? "You" : esc(nameOf(S.seats[seat]));
+  const nudge = !b.wp && S.opts && S.opts.usePack && (MODE === "host" || MODE === "cpu") && PREF.pack && PACKS.get(PREF.pack) && !PACKS.get(PREF.pack).tags
+    ? `<div class="pkload">These are the standard faces: ${esc(PACKS.get(PREF.pack).name)} needs details from Claude first. <button class="iconbtn" data-act="packai" style="margin-top:6px">✨ Add details with Claude</button><br><span class="small mut">Then tap 🎮 Games and start Who Is It? again.</span></div>` : "";
   if (me >= 0 && b.stage === "pick") {
     if (!b.ready[me] && !(pending && pending.mv && pending.mv.pick != null)) {
-      return `<div class="wipick">${wiCard(WI.pick, { cls: "big" })}<div><p class="small mut" style="margin:0 0 8px">This is your mystery person. ${esc(nameOf(S.seats[1 - me]))} has to work out who it is.</p><button class="btn alt" data-act="wishuffle">🔀 Someone else</button><div class="gap"></div><button class="btn green" data-act="wiready">✅ Ready</button></div></div>`;
+      return `${nudge}<div class="wipick">${wiCard(WI.pick, { cls: "big" })}<div><p class="small mut" style="margin:0 0 8px">This is your mystery person. ${esc(nameOf(S.seats[1 - me]))} has to work out who it is.</p><button class="btn alt" data-act="wishuffle">🔀 Someone else</button><div class="gap"></div><button class="btn green" data-act="wiready">✅ Ready</button></div></div>`;
     }
     const mine = wiSecret() ?? (pending && pending.mv && pending.mv.pick);
-    return `<div class="wipick">${mine != null ? wiCard(mine, { cls: "big" }) : ""}<p class="mut">Ready! Keep it secret…</p></div>`;
+    return `${nudge}<div class="wipick">${mine != null ? wiCard(mine, { cls: "big" }) : ""}<p class="mut">Ready! Keep it secret…</p></div>`;
   }
   const view = me >= 0 ? me : S.turn >= 0 ? S.turn : 0;
   const down = b.down[view], left = down.filter(x => !x).length;
@@ -1130,7 +1138,7 @@ function boardWI(c) {
     }
   }
   const hist = b.log.length > 1 ? `<details class="wihist"><summary>All questions (${b.log.length})</summary>${b.log.slice().reverse().map(l => `<div>${l.q != null ? `${nm(l.seat)}: ${esc(wiQ(l.q))} <span class="ans ${l.a ? "y" : "n"}">${l.a ? "Yes" : "No"}</span>` : `${nm(l.seat)} guessed ${esc(wiName(l.guess))}: <span class="ans ${l.ok ? "y" : "n"}">${l.ok ? "Right" : "Wrong"}</span>`}</div>`).join("")}</details>` : "";
-  return `${lastLine ? `<div class="wilast">${lastLine}</div>` : ""}
+  return `${nudge}${lastLine ? `<div class="wilast">${lastLine}</div>` : ""}
     <div class="wiinfo">${me >= 0 && mine != null ? `<span class="wime">${faceSVG(mine)}<span>You are <b>${esc(wiName(mine))}</b></span></span>` : ""}<span class="mut small">${me >= 0 ? "Your board" : nm(view) + "'s board"}: ${left} left${me >= 0 ? ` · ${esc(nameOf(S.seats[1 - me]))}: ${b.down[1 - me].filter(x => !x).length} left` : ""}</span></div>
     ${controls}${grid}${hist}`;
 }
