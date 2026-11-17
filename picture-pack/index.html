@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Letter Quest Picture Pack</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<style>
+:root{--bg:#E7F0FA;--card:#fff;--ink:#16284A;--muted:#56688A;--soft:#D5E4F6;--blank:#B9CCE6;--gold:#F0B429;--gold-ink:#5E4100;--good:#23895B;--focus:#2F6FD6;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#0E1829;--card:#17253D;--ink:#EAF1FB;--muted:#A2B3CF;--soft:#213555;--blank:#35507A;--gold:#F5C24A;--gold-ink:#3A2800;--good:#4CC38A;--focus:#7FB0FF;color-scheme:dark}}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.4 "Atkinson Hyperlegible",system-ui,sans-serif;padding:16px 16px 40px}
+.wrap{max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+h1{font-family:Fredoka,system-ui,sans-serif;font-size:1.5rem;margin:0}
+p{margin:0}
+.muted{color:var(--muted)}
+.steps{margin:0;padding-left:1.3em;color:var(--muted)}
+.steps b{color:var(--ink)}
+.panel{background:var(--card);border-radius:18px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.count{font-family:Fredoka,sans-serif;font-weight:600;font-size:1.15rem;font-variant-numeric:tabular-nums}
+.btns{display:flex;gap:8px;flex-wrap:wrap}
+button,.go{font:inherit;border:0;cursor:pointer;font-family:Fredoka,sans-serif;font-weight:600;border-radius:12px;padding:11px 16px;background:var(--soft);color:var(--ink);text-decoration:none;display:inline-block}
+.primary{background:var(--gold);color:var(--gold-ink)}
+.note{min-height:1.4em;color:var(--good);font-weight:700}
+.note.bad{color:#C2410C}
+.toggle{display:inline-flex;gap:8px;align-items:center;font-size:.95rem}
+.toggle input{width:20px;height:20px;accent-color:var(--focus)}
+h2{font-family:Fredoka,sans-serif;font-weight:600;font-size:1.15rem;margin:8px 0 6px;display:flex;justify-content:space-between}
+h2 span{font-family:inherit;font-weight:400;font-size:.85rem;color:var(--muted)}
+.list{display:flex;flex-direction:column;gap:6px}
+.row{display:flex;align-items:center;gap:10px;background:var(--card);border-radius:14px;padding:6px}
+.thumb{width:56px;height:56px;flex:none;border-radius:10px;overflow:hidden;background:var(--soft);display:grid;place-items:center;font-family:Fredoka,sans-serif;font-size:1.5rem;color:var(--blank)}
+.thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.who{flex:1;min-width:0;display:flex;flex-direction:column}
+.who b{font-family:Fredoka,sans-serif;font-weight:600;font-size:1.1rem}
+.who small{color:var(--muted);font-size:.85rem}
+.who small.yes{color:var(--good);font-weight:700}
+.rowbtns{display:flex;gap:4px;flex:none;flex-wrap:wrap;justify-content:flex-end}
+.rowbtns button,.rowbtns .go{padding:8px 11px;border-radius:10px;font-size:.95rem}
+.hide-done .row.done{display:none}
+a:focus-visible,button:focus-visible,input:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Letter Quest Picture Pack</h1>
+  <ol class="steps">
+    <li>Tap <b>Find</b> to search Google Images, then long-press a picture and save it.</li>
+    <li>Tap <b>Add</b> and choose the picture you saved.</li>
+    <li>When you're done, tap <b>Send pack</b> and send the file to George's tablet.</li>
+    <li>On the tablet, open Letter Quest, go to <b>Pictures</b> and tap <b>Load picture pack</b>.</li>
+  </ol>
+
+  <div class="panel">
+    <span class="count" id="count"></span>
+    <div class="btns">
+      <button class="primary" id="sendBtn">Send pack</button>
+      <button id="saveBtn">Save pack to phone</button>
+      <button id="openBtn">Open a pack</button>
+    </div>
+    <p class="note" id="note" aria-live="polite"></p>
+    <label class="toggle"><input type="checkbox" id="hide"> Only show ones without a picture</label>
+  </div>
+
+  <div id="groups"></div>
+  <p class="muted" style="font-size:.85rem">Pictures stay on this phone until you send the pack. Nothing is uploaded anywhere.</p>
+</div>
+<input type="file" id="picIn" accept="image/*" hidden>
+<input type="file" id="packIn" hidden>
+<script>
+// WORD must match the game exactly. Search adds the film so Google finds the right character.
+const THEME = "disney";
+const LEVELS = [
+  ["Easy", [["ABU","Aladdin"],["REX","Toy Story"],["BOO","Monsters Inc"],["NEMO","Finding Nemo"],["DORY","Finding Nemo"],["OLAF","Frozen"],["SVEN","Frozen reindeer"],["ANNA","Frozen"],["ELSA","Frozen"],["BUZZ","Buzz Lightyear Toy Story"],["LILO","Lilo and Stitch"],["MAUI","Moana"],["NALA","The Lion King"],["SCAR","The Lion King"],["POOH","Winnie the Pooh"],["MIKE","Mike Wazowski Monsters Inc"],["REMY","Ratatouille"],["HAMM","Toy Story piggy bank"]]],
+  ["Medium", [["SIMBA","The Lion King"],["TIMON","The Lion King"],["PUMBAA","The Lion King"],["RAFIKI","The Lion King"],["WOODY","Toy Story"],["JESSIE","Toy Story"],["MOANA",""],["STITCH","Lilo and Stitch"],["MICKEY","Mickey Mouse"],["MINNIE","Minnie Mouse"],["DONALD","Donald Duck"],["GOOFY",""],["PLUTO","dog"],["DAISY","Daisy Duck"],["DUMBO",""],["BAMBI",""],["ARIEL","The Little Mermaid"],["BELLE","Beauty and the Beast"],["BEAST","Beauty and the Beast"],["GASTON","Beauty and the Beast"],["GENIE","Aladdin"],["JAFAR","Aladdin"],["MULAN",""],["MUSHU","Mulan dragon"],["TIGGER","Winnie the Pooh"],["EEYORE","Winnie the Pooh"],["PIGLET","Winnie the Pooh"],["BALOO","The Jungle Book"],["MOWGLI","The Jungle Book"],["SULLEY","Monsters Inc"],["MARLIN","Finding Nemo"],["URSULA","The Little Mermaid"],["PASCAL","Tangled chameleon"],["MUFASA","The Lion King"],["AURORA","Sleeping Beauty"],["BRUNO","Encanto"]]],
+  ["Hard", [["RAPUNZEL","Tangled"],["ALADDIN",""],["JASMINE","Aladdin"],["KRISTOFF","Frozen"],["SEBASTIAN","The Little Mermaid crab"],["FLOUNDER","The Little Mermaid"],["BAGHEERA","The Jungle Book"],["MAXIMUS","Tangled horse"],["THUMPER","Bambi rabbit"],["CINDERELLA",""],["PINOCCHIO",""],["HERCULES",""],["MIRABEL","Encanto"]]]
+];
+
+const cap = w => w.charAt(0) + w.slice(1).toLowerCase();
+const ALL = LEVELS.flatMap(l => l[1].map(i => i[0]));
+const $ = id => document.getElementById(id);
+
+// ---------- storage (IndexedDB, so all 67 fit easily) ----------
+let db;
+function openDB(){ return new Promise((res, rej) => {
+  const r = indexedDB.open("lq-picture-pack", 1);
+  r.onupgradeneeded = () => r.result.createObjectStore("pics");
+  r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+});}
+const tx = (mode, fn) => new Promise((res, rej) => {
+  const t = db.transaction("pics", mode), s = t.objectStore("pics"), out = fn(s);
+  t.oncomplete = () => res(out && out.result); t.onerror = () => rej(t.error);
+});
+let pics = {};
+async function loadAll(){
+  pics = {};
+  await new Promise((res, rej) => {
+    const c = db.transaction("pics").objectStore("pics").openCursor();
+    c.onsuccess = () => { const cur = c.result; if (cur) { pics[cur.key] = cur.value; cur.continue(); } else res(); };
+    c.onerror = () => rej(c.error);
+  });
+}
+const putPic = (w, d) => tx("readwrite", s => s.put(d, w)).then(() => { pics[w] = d; });
+const delPic = w => tx("readwrite", s => s.delete(w)).then(() => { delete pics[w]; });
+
+// ---------- shrink a picture to the size the game uses ----------
+function shrink(file){ return new Promise((res, rej) => {
+  const url = URL.createObjectURL(file), img = new Image();
+  img.onload = () => {
+    const s = 360, c = document.createElement("canvas"), m = Math.min(img.width, img.height);
+    c.width = s; c.height = s;
+    c.getContext("2d").drawImage(img, (img.width - m) / 2, (img.height - m) / 2, m, m, 0, 0, s, s);
+    URL.revokeObjectURL(url); res(c.toDataURL("image/jpeg", 0.75));
+  };
+  img.onerror = () => { URL.revokeObjectURL(url); rej(); };
+  img.src = url;
+});}
+
+function note(t, bad){ $("note").textContent = t; $("note").className = "note" + (bad ? " bad" : ""); }
+
+// ---------- list ----------
+function draw(){
+  const g = $("groups"); g.innerHTML = "";
+  LEVELS.forEach(([lv, items]) => {
+    const h = document.createElement("h2");
+    h.innerHTML = lv + "<span></span>";
+    h.lastChild.textContent = items.filter(i => pics[i[0]]).length + " of " + items.length + " done";
+    const list = document.createElement("div"); list.className = "list";
+    items.forEach(([w, film]) => {
+      const has = !!pics[w];
+      const r = document.createElement("div"); r.className = "row" + (has ? " done" : "");
+      const th = document.createElement("div"); th.className = "thumb";
+      if (has) { const im = new Image(); im.src = pics[w]; im.alt = ""; th.append(im); } else th.textContent = w[0];
+      const who = document.createElement("div"); who.className = "who";
+      who.innerHTML = "<b></b>" + (has ? '<small class="yes">Picture added</small>' : "<small>No picture yet</small>");
+      who.firstChild.textContent = cap(w);
+      const bt = document.createElement("div"); bt.className = "rowbtns";
+      const a = document.createElement("a"); a.className = "go"; a.textContent = "Find"; a.target = "_blank"; a.rel = "noopener";
+      a.href = "https://www.google.com/search?tbm=isch&q=" + encodeURIComponent((cap(w) + " " + film + " Disney character").replace(/\s+/g, " "));
+      const add = document.createElement("button"); add.className = has ? "" : "primary"; add.textContent = has ? "Change" : "Add";
+      add.setAttribute("aria-label", (has ? "Change picture for " : "Add picture for ") + cap(w));
+      add.onclick = () => { target = w; $("picIn").click(); };
+      bt.append(a, add);
+      if (has) {
+        const rm = document.createElement("button"); rm.textContent = "✕"; rm.setAttribute("aria-label", "Remove picture for " + cap(w));
+        rm.onclick = async () => { await delPic(w); draw(); };
+        bt.append(rm);
+      }
+      r.append(th, who, bt); list.append(r);
+    });
+    g.append(h, list);
+  });
+  const n = ALL.filter(w => pics[w]).length;
+  $("count").textContent = n + " of " + ALL.length + " pictures added";
+}
+
+let target = null;
+$("picIn").onchange = async e => {
+  const f = e.target.files && e.target.files[0]; e.target.value = "";
+  if (!f || !target) return;
+  try { await putPic(target, await shrink(f)); note(cap(target) + " added."); draw(); }
+  catch { note("That file isn't a picture. Try saving it again from Google.", true); }
+};
+
+// ---------- the pack file ----------
+function packFile(){
+  const pictures = {};
+  ALL.forEach(w => { if (pics[w]) pictures[w] = pics[w]; });
+  const n = Object.keys(pictures).length;
+  const json = JSON.stringify({ type: "letter-quest-pictures", version: 1, theme: THEME, made: new Date().toISOString(), pictures });
+  return { n, file: new File([json], "george-disney-pictures.json", { type: "application/json" }) };
+}
+$("sendBtn").onclick = async () => {
+  const { n, file } = packFile();
+  if (!n) return note("Add some pictures first.", true);
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: "George's Disney pictures" }); note("Pack sent with " + n + " pictures."); }
+    catch (err) { if (err && err.name !== "AbortError") saveFile(file, n); }
+  } else saveFile(file, n);
+};
+$("saveBtn").onclick = () => {
+  const { n, file } = packFile();
+  if (!n) return note("Add some pictures first.", true);
+  saveFile(file, n);
+};
+function saveFile(file, n){
+  const a = document.createElement("a"); a.href = URL.createObjectURL(file); a.download = file.name;
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  note("Saved george-disney-pictures.json with " + n + " pictures to your Downloads.");
+}
+$("openBtn").onclick = () => $("packIn").click();
+$("packIn").onchange = async e => {
+  const f = e.target.files && e.target.files[0]; e.target.value = "";
+  if (!f) return;
+  try {
+    const p = JSON.parse(await f.text());
+    if (p.type !== "letter-quest-pictures" || !p.pictures) throw 0;
+    let n = 0;
+    for (const w of ALL) if (typeof p.pictures[w] === "string" && p.pictures[w].startsWith("data:image/")) { await putPic(w, p.pictures[w]); n++; }
+    note("Opened the pack: " + n + " pictures added here."); draw();
+  } catch { note("That file isn't a picture pack.", true); }
+};
+$("hide").onchange = e => document.body.classList.toggle("hide-done", e.target.checked);
+
+openDB().then(d => { db = d; return loadAll(); }).then(draw).catch(() => {
+  note("This browser won't let the page save pictures. Try opening it in Chrome.", true); draw();
+});
+</script>
+</body>
+</html>
