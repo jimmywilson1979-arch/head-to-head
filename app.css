@@ -419,3 +419,9 @@ img.face { aspect-ratio: 1; object-fit: cover; border-radius: 7px; background: #
 .spmissed { fill: none; stroke: #fff; stroke-width: 3; stroke-dasharray: 6 4; }
 .spx { font-size: 26px; fill: #ff3b55; paint-order: stroke; stroke: #fff; stroke-width: 2px; }
 .spskip { display: block; width: 100%; margin-top: 10px; padding: 10px; font-size: 14px; }
+
+/* one screen: whose go it is, in their colour */
+.status.me.p0 { color: var(--p0); }
+.status.me.p1 { color: var(--p1); }
+.gpick.off { opacity: .35; filter: grayscale(1); pointer-events: none; }
+.gpick.off b::after { content: "Needs 2 phones"; display: block; font-size: .7em; font-weight: 600; }

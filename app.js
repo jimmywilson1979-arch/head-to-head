@@ -27,7 +27,9 @@ const LEVELS = { easy: "Easy", medium: "Medium", hard: "Hard" };
 // ===== WHO AM I =====
 const ME = { id: ls.get("h2h_pid", null), name: ls.get("h2h_name", "") };
 if (!ME.id) { ME.id = uid(); ls.set("h2h_pid", ME.id); }
-const PREF = Object.assign({ game: "ttt", level: "medium", sound: true, deck: "animals", kids: false }, ls.get("h2h_pref", {}));
+const PREF = Object.assign({ game: "ttt", level: "medium", sound: true, deck: "animals", kids: false, screens: "two", p2: "" }, ls.get("h2h_pref", {}));
+// One screen: two people take turns on this phone or tablet. Only games with nothing to hide and one player at a time.
+const ONE_SCREEN = ["ttt", "c4", "dots", "golf", "hm", "cw"];
 const savePref = () => ls.set("h2h_pref", PREF);
 
 
@@ -176,7 +178,8 @@ function rebindId(root, a, b) {
   })(root);
 }
 const nameOf = id => (pl(id) || {}).name || "Player";
-const mySeat = () => S ? S.seats.indexOf(ME.id) : -1;
+const mySeat = () => !S ? -1 : S.pass ? (S.phase === "play" ? [0, 1].find(s => GAMES[S.game].waiting(S, s)) ?? -1 : -1) : S.seats.indexOf(ME.id);
+const isMe = id => id === ME.id && !(S && S.pass);   // "You" only makes sense with one person per phone
 const G = () => GAMES[S.game];
 const waiting = seat => !!S && S.phase === "play" && seat >= 0 && G().waiting(S, seat);
 const secKey = () => S.sid + ":" + S.round;
@@ -399,6 +402,13 @@ function startCPU() {
   S.level = PREF.level; startFromLobby(); keepAwake(); commit();
 }
 
+function startPass() {
+  MODE = "cpu";
+  S = newState(PREF.game, "ONE"); S.pass = true;
+  S.players = [{ id: ME.id, name: (ME.name || "Player 1").trim(), wins: 0 }, { id: "p2", name: (PREF.p2 || "Player 2").trim(), wins: 0 }];
+  startFromLobby(); keepAwake(); commit();
+}
+
 // ===== MY ACTIONS =====
 function myMove(mv) {
   if (!S || S.phase !== "play") return;
@@ -417,7 +427,7 @@ function myMove(mv) {
     if (typeof mv === "string") MYPICK = { k: secKey() + ":" + S.board.hist.length, v: mv };
     sendMove(mv, n); Snd.pick(); render(); return;
   }
-  if (applyMove(ME.id, mv, n)) { afterMove(); commit(); }
+  if (applyMove(S.pass ? S.seats[me] : ME.id, mv, n)) { afterMove(); commit(); }
 }
 function toLobby() { // everyone stays connected and goes back to choosing a game
   if (MODE !== "host" || !S) return;
@@ -580,8 +590,8 @@ function render() {
   return renderGame();
 }
 
-function gamePicker(sel, attr = "data-pickgame") {
-  return `<div class="games">${Object.values(GAMES).map(g => `<button class="gpick ${sel === g.id ? "on" : ""}" ${attr}="${g.id}"><div class="ic">${GAME_ICON[g.id]}</div><b>${g.name}</b></button>`).join("")}</div>`;
+function gamePicker(sel, attr = "data-pickgame", only = null) { // only: the games allowed right now; the rest are greyed out
+  return `<div class="games">${Object.values(GAMES).map(g => `<button class="gpick ${sel === g.id ? "on" : ""} ${only && !only.includes(g.id) ? "off" : ""}" ${attr}="${g.id}"${only && !only.includes(g.id) ? " disabled" : ""}><div class="ic">${GAME_ICON[g.id]}</div><b>${g.name}</b></button>`).join("")}</div>`;
 }
 function levelSeg(sel, attr = "data-level") {
   return `<div class="seg">${Object.entries(LEVELS).map(([k, v]) => `<button class="${sel === k ? "on" : ""}" ${attr}="${k}">${v}</button>`).join("")}</div>`;
@@ -594,10 +604,34 @@ function renderHome() {
   const saved = ls.get("h2h_host", null);
   const resume = saved && saved.S && GAMES[saved.S.game] && Date.now() - saved.t < 3 * 3600e3 && saved.S.players.length > 1 ? saved : null;
   if (!GAMES[PREF.game]) PREF.game = "ttt";
+  const one = PREF.screens === "one";
+  if (one && !ONE_SCREEN.includes(PREF.game)) PREF.game = "ttt";
+  const howSeg = `<div class="seg"><button class="${one ? "" : "on"}" data-act="screens2">📱📱 Two phones</button><button class="${one ? "on" : ""}" data-act="screens1">👥 One screen</button></div>`;
+  if (one) {
+    app.innerHTML = `
+  <div class="top"><span></span>${soundBtn()}</div>
+  <div class="logo"><h1><span class="a">Head</span><span class="vs">to</span><span class="b">Head</span></h1><p>Two players, one screen. Take turns.</p></div>
+  <div class="card">${howSeg}</div>
+  <div class="card">
+    <p class="label">Who's playing?</p>
+    <input id="nm" class="field" maxlength="16" placeholder="Player 1" value="${esc(ME.name)}" autocomplete="off" enterkeyhint="next">
+    <div class="gap"></div>
+    <input id="nm2" class="field" maxlength="16" placeholder="Player 2" value="${esc(PREF.p2 || "")}" autocomplete="off" enterkeyhint="done">
+  </div>
+  <div class="card">
+    <p class="label">Pick a game</p>
+    ${gamePicker(PREF.game, "data-pickgame", ONE_SCREEN)}
+    ${KIDSG.includes(PREF.game) ? `<div class="gap"></div><p class="label">${kidsLabel(PREF.game)}</p>${kidsSeg(PREF.kids, "data-kids")}` : ""}
+    <p class="small mut" style="margin:10px 2px 0">Greyed-out games keep things secret from the other player, or need you both playing at once, so they need two phones.</p>
+  </div>
+  <button class="btn" data-act="pass">👥 Start<span class="sub">Pass the phone or tablet between turns</span></button>`;
+    return;
+  }
   app.innerHTML = `
   <div class="top"><span></span>${soundBtn()}</div>
   <div class="logo"><h1><span class="a">Head</span><span class="vs">to</span><span class="b">Head</span></h1><p>Phone vs phone. Scan, join, play.</p></div>
   ${resume ? `<div class="card resume"><div class="row"><div><b>Game ${esc(resume.S.room)} is still open</b><div class="small mut">${esc(GAMES[resume.S.game].name)} · ${resume.S.players.map(p => esc(p.name)).join(", ")}</div></div><button class="btn green" style="flex:none;width:auto;padding:12px 18px" data-act="resume">Resume</button></div></div>` : ""}
+  <div class="card">${howSeg}</div>
   <div class="card">
     <p class="label">Your name</p>
     <input id="nm" class="field" maxlength="16" placeholder="Your name" value="${esc(ME.name)}" autocomplete="off" enterkeyhint="done">
@@ -966,7 +1000,7 @@ function wiSecret() { // which person this phone is hiding
 function boardWI(c) {
   const b = S.board, me = c.me, g = GAMES.wi, P = g.PEOPLE, Q = g.QUESTIONS;
   if (WI.k !== secKey()) WI = { k: secKey(), pick: Math.floor(Math.random() * P.length), guessing: false, qOpen: false };
-  const nm = seat => S.seats[seat] === ME.id ? "You" : esc(nameOf(S.seats[seat]));
+  const nm = seat => isMe(S.seats[seat]) ? "You" : esc(nameOf(S.seats[seat]));
   if (me >= 0 && b.stage === "pick") {
     if (!b.ready[me] && !(pending && pending.mv && pending.mv.pick != null)) {
       return `<div class="wipick">${wiCard(WI.pick, { cls: "big" })}<div><p class="small mut" style="margin:0 0 8px">This is your mystery person. ${esc(nameOf(S.seats[1 - me]))} has to work out who it is.</p><button class="btn alt" data-act="wishuffle">🔀 Someone else</button><div class="gap"></div><button class="btn green" data-act="wiready">✅ Ready</button></div></div>`;
@@ -1018,7 +1052,7 @@ function golfStartAnim(s) {
   Snd.tone(300, .05, "triangle", .14); Snd.noise(.05, .12, 0, 2500);
   golfLoop();
 }
-const golfWho = seat => S.seats[seat] === ME.id ? "You" : nameOf(S.seats[seat]);
+const golfWho = seat => isMe(S.seats[seat]) ? "You" : nameOf(S.seats[seat]);
 function golfAfterShot(a) { // say what just happened, and sum up the hole when it's finished
   const b = S.board, done = a.holeDone;
   const n = done ? b.scores[a.seat][a.hole] : b.balls[a.seat].strokes;
@@ -1107,7 +1141,7 @@ function drawGolf() {
     if (seat === me && !a) { // your ball: ring + label so it's easy to spot
       c.strokeStyle = me ? "rgba(255,210,63,.9)" : "rgba(255,93,115,.9)"; c.lineWidth = 1.4; c.setLineDash([2.5, 2.5]);
       c.beginPath(); c.arc(x, y, 11, 0, Math.PI * 2); c.stroke(); c.setLineDash([]);
-      c.fillStyle = "#fff"; c.font = "700 8px Nunito, sans-serif"; c.textAlign = "center"; c.fillText("YOU", x, y - 14);
+      c.fillStyle = "#fff"; c.font = "700 8px Nunito, sans-serif"; c.textAlign = "center"; c.fillText(S.pass ? nameOf(S.seats[me]).toUpperCase().slice(0, 10) : "YOU", x, y - 14);
     }
     ballAt(x, y, seat, seat !== me && me >= 0);
   });
@@ -1167,7 +1201,7 @@ function boardGolf(c) {
   const g = GAMES.golf, b = S.board, a = GOLF.anim, holeIx = a ? a.hole : b.hole, H = g.HOLES[holeIx];
   const tot = sd => b.scores[sd].reduce((x, y) => x + y, 0);
   const cell = (sd, i) => { const v = b.scores[sd][i]; if (v == null) return i === b.hole && S.phase === "play" ? `<td class="cur">${b.balls[sd].strokes || ""}</td>` : "<td></td>"; const par = g.HOLES[i].par; return `<td class="${v < par ? "under" : v > par ? "over" : ""}">${v}</td>`; };
-  const nm = sd => S.seats[sd] === ME.id ? "You" : esc(nameOf(S.seats[sd]));
+  const nm = sd => isMe(S.seats[sd]) ? "You" : esc(nameOf(S.seats[sd]));
   const card = `<table class="golfcard"><tr><th></th>${g.HOLES.map((_, i) => `<th class="${i === b.hole ? "cur" : ""}">${i + 1}</th>`).join("")}<th>Tot</th></tr>
     <tr class="par"><td>Par</td>${g.HOLES.map(h => `<td>${h.par}</td>`).join("")}<td>${g.HOLES.reduce((x, h) => x + h.par, 0)}</td></tr>
     ${[0, 1].map(sd => `<tr class="p${sd}"><td><i></i>${nm(sd)}</td>${g.HOLES.map((_, i) => cell(sd, i)).join("")}<td><b>${tot(sd)}</b></td></tr>`).join("")}</table>`;
@@ -1374,7 +1408,7 @@ function hkPointer(cv) {
 function hkBar() {
   const el = document.getElementById("hkbar"); if (!el || !S || S.game !== "hockey") return;
   const me = mySeat(), b = S.board, opp = hkOpp();
-  const nm = sd => S.seats[sd] === ME.id ? "You" : esc(nameOf(S.seats[sd]));
+  const nm = sd => isMe(S.seats[sd]) ? "You" : esc(nameOf(S.seats[sd]));
   const link = MODE === "cpu" ? "" : (MODE === "host" ? dcOpen(opp) : dcOpen(S.host)) ? `<span class="hklink ok">⚡ Direct</span>` : `<span class="hklink">☁️ Online</span>`;
   const order = me === 1 ? [1, 0] : [0, 1];
   el.innerHTML = `<div class="hkscore">${order.map((sd, i) => `<span class="p${sd}"><i></i>${nm(sd)} <b>${b.score[sd]}</b></span>${i === 0 ? `<em>first to ${b.target}</em>` : ""}`).join("")}</div>
@@ -1403,7 +1437,7 @@ function renderGame() {
   const chip = (seat, side) => {
     const id = S.seats[seat], p = pl(id) || { name: "?" };
     const w = S.phase === "play" && g.waiting(S, seat), simul = S.turn < 0;
-    const label = id === ME.id ? "You" : esc(p.name);
+    const label = isMe(id) ? "You" : esc(p.name);
     let sub = "";
     if (S.phase === "play") sub = w ? (simul ? "choosing…" : id === "cpu" ? "thinking…" : "to play") : simul ? "ready ✓" : "";
     else if (over && S.result.w === seat) sub = "wins!";
@@ -1423,7 +1457,7 @@ function renderGame() {
     else if (S.game === "tt" && ttRevealPending()) {
       const L = S.board.last;
       if (L.w === "draw") status = "Draw! Both cards go in the middle";
-      else if (S.seats[L.w] === ME.id) { status = "You win the round!"; cls = "me"; }
+      else if (isMe(S.seats[L.w])) { status = "You win the round!"; cls = "me"; }
       else status = `${esc(nameOf(S.seats[L.w]))} wins the round`;
       if (L.w === "draw") sub = "Whoever wins the next round takes them all";
     }
@@ -1450,7 +1484,7 @@ function renderGame() {
     if (me < 0) sub = `You're watching${S.queue.indexOf(ME.id) === 0 ? ". You're next up!" : ""}`;
   } else if (over) {
     if (S.result.w === "draw") status = "It's a draw! 🤝";
-    else if (S.seats[S.result.w] === ME.id) { status = "You win! 🎉"; cls = "me"; }
+    else if (isMe(S.seats[S.result.w])) { status = "You win! 🎉"; cls = "me"; }
     else status = `${esc(nameOf(S.seats[S.result.w]))} wins!`;
     if (S.game === "dots") sub = `Boxes ${S.board.score[0]} – ${S.board.score[1]}`;
     if (S.game === "rps") sub = `${S.board.score[0]} – ${S.board.score[1]}`;
@@ -1463,6 +1497,10 @@ function renderGame() {
     if (RACEG.includes(S.game)) sub = raceOver() + (S.game === "flag" && S.board.prev ? `. The last one was ${esc(S.board.prev.name)}` : "");
     if (S.game === "cw") sub = `Words answered ${S.board.score[0]} – ${S.board.score[1]}`;
     if (S.game === "tt") sub = S.board.count[0] && S.board.count[1] ? `Most cards after ${GAMES.tt.MAX_ROUNDS} rounds: ${S.board.count[0]} – ${S.board.count[1]}` : "Won every card";
+  }
+  if (S.pass && S.phase === "play" && !shaking) { // one screen: say whose go it is, by name
+    const now = mySeat();
+    if (now >= 0) { status = `${esc(nameOf(S.seats[now]))}'s turn`; cls = "me p" + now; }
   }
 
   const board = { ttt: boardTTT, c4: boardC4, dots: boardDots, bs: boardBS, rps: boardRPS, tt: boardTT, wi: boardWI, golf: boardGolf, hm: boardHM, ws: boardWS, cw: boardCW, flag: boardFlag, snap: boardSnap, spot: boardSpot,
@@ -1480,7 +1518,7 @@ function renderGame() {
       ${me >= 0 || host ? `<button class="btn green" data-act="again">🔁 Play again</button>` : `<p class="center mut">Waiting for the next game…</p>`}
       ${MODE === "host" ? `<button class="btn" data-act="tolobby">🎮 Choose another game</button>` : ""}
       ${MODE === "guest" ? `<button class="btn" data-act="opensuggest">💡 Suggest another game</button>` : ""}
-      ${MODE === "cpu" ? `<div class="card"><p class="label">Switch game</p>${gamePicker(S.game, "data-setgame")}${S.game === "tt" ? `<div class="gap"></div><p class="label">Card Clash theme</p>${deckPicker(S.opts && S.opts.deck, "data-setdeck")}` : ""}${KIDSG.includes(S.game) ? `<div class="gap"></div><p class="label">${kidsLabel(S.game)}</p>${kidsSeg(S.opts && S.opts.kids, "data-setkids")}` : ""}${MODE === "cpu" ? `<div class="gap"></div><p class="label">Computer level</p>${levelSeg(S.level, "data-setlevel")}` : ""}</div>` : ""}
+      ${MODE === "cpu" ? `<div class="card"><p class="label">Switch game</p>${gamePicker(S.game, "data-setgame", S.pass ? ONE_SCREEN : null)}${S.game === "tt" ? `<div class="gap"></div><p class="label">Card Clash theme</p>${deckPicker(S.opts && S.opts.deck, "data-setdeck")}` : ""}${KIDSG.includes(S.game) ? `<div class="gap"></div><p class="label">${kidsLabel(S.game)}</p>${kidsSeg(S.opts && S.opts.kids, "data-setkids")}` : ""}${MODE === "cpu" && !S.pass ? `<div class="gap"></div><p class="label">Computer level</p>${levelSeg(S.level, "data-setlevel")}` : ""}</div>` : ""}
     </div>`;
   }
 
@@ -1488,7 +1526,7 @@ function renderGame() {
   const draws = S.draws ? `<div class="center small mut" style="margin-top:-4px;margin-bottom:8px">${S.draws} draw${S.draws > 1 ? "s" : ""}</div>` : "";
 
   app.innerHTML = `
-  <div class="top"><span class="t">${esc(g.name)}${(g.word || g.kidsOpt) && S.board && S.board.kids ? ` <span class="small mut">· Kids</span>` : ""}${MODE === "cpu" ? ` <span class="small mut">· ${LEVELS[S.level]}</span>` : ""}</span><span class="row" style="flex:none;gap:6px">${gamesBtn()}${MODE === "host" ? `<button class="iconbtn" data-act="qr">${showQR ? "Hide QR" : "📱 Join QR"}</button>` : ""}${soundBtn()}</span></div>
+  <div class="top"><span class="t">${esc(g.name)}${(g.word || g.kidsOpt) && S.board && S.board.kids ? ` <span class="small mut">· Kids</span>` : ""}${MODE === "cpu" ? ` <span class="small mut">· ${S.pass ? "One screen" : LEVELS[S.level]}</span>` : ""}</span><span class="row" style="flex:none;gap:6px">${gamesBtn()}${MODE === "host" ? `<button class="iconbtn" data-act="qr">${showQR ? "Hide QR" : "📱 Join QR"}</button>` : ""}${soundBtn()}</span></div>
   ${connBanner()}${suggestBanner()}${suggestPanel()}
   ${MODE === "host" && showQR ? inviteBlock() : ""}
   <div class="bar">${chip(0, "")}<div class="score"><span><b>${w0}</b> – <b>${w1}</b></span></div>${chip(1, "r")}</div>
@@ -1511,7 +1549,7 @@ const KB_ROWS = ["ABCDEFG", "HIJKLMN", "OPQRSTU", "VWXYZ"];
 function keyboard(state) { // state(L) gives the key's classes; "off" disables it
   return `<div class="kbd">${KB_ROWS.map(r => `<div>${[...r].map(L => { const st = state(L) || ""; return `<button data-key="${L}" class="${st}" ${/\boff\b/.test(st) ? "disabled" : ""}>${L}</button>`; }).join("")}</div>`).join("")}</div>`;
 }
-const who = seat => S.seats[seat] === ME.id ? "You" : S.seats[seat] === "cpu" ? "The computer" : esc(nameOf(S.seats[seat]));
+const who = seat => isMe(S.seats[seat]) ? "You" : S.seats[seat] === "cpu" ? "The computer" : esc(nameOf(S.seats[seat]));
 
 // ----- Hangman -----
 let HM = { k: "", solving: false, typed: [] };
@@ -1866,6 +1904,9 @@ app.addEventListener("click", e => {
   if (nameField) { ME.name = cleanName(nameField.value); ls.set("h2h_name", ME.name); }
   switch (d.act) {
     case "host": return startHosting();
+    case "screens1": PREF.screens = "one"; savePref(); return renderHome();
+    case "screens2": PREF.screens = "two"; savePref(); return renderHome();
+    case "pass": { const n2 = $("#nm2"); if (n2) { PREF.p2 = cleanName(n2.value); savePref(); } return startPass(); }
     case "cpu": return startCPU();
     case "resume": { const s = ls.get("h2h_host", null); if (s && s.S && GAMES[s.S.game]) startHosting(s.S); return; }
     case "joincode": {
@@ -1922,10 +1963,12 @@ app.addEventListener("click", e => {
 app.addEventListener("keydown", e => {
   if (e.key !== "Enter") return;
   if (e.target.id === "jc") { e.target.blur(); app.querySelector('[data-act="joincode"]').click(); }
-  else if (e.target.id === "nm") { e.target.blur(); if (MODE === "join") app.querySelector('[data-act="join"]').click(); }
+  else if (e.target.id === "nm") { const n2 = $("#nm2"); if (n2) n2.focus(); else { e.target.blur(); if (MODE === "join") app.querySelector('[data-act="join"]').click(); } }
+  else if (e.target.id === "nm2") e.target.blur();
 });
 app.addEventListener("input", e => {
   if (e.target.id === "nm") { ME.name = cleanName(e.target.value); ls.set("h2h_name", ME.name); }
+  if (e.target.id === "nm2") { PREF.p2 = cleanName(e.target.value); savePref(); }
   if (e.target.id === "jc") e.target.value = e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 4);
 });
 
