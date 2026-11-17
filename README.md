@@ -37,6 +37,8 @@ Use your own pictures in **Symbol Snap**, **Who Is It?** and **Card Clash**.
 3. For **Who Is It?** and **Card Clash**, tap **✨ Add details with Claude** once. Claude looks at each picture to note hats, hair and colours, and makes up five fun stats for the cards. It uses your Claude API key and is saved on the phone.
 4. In Card Clash, pick 🖼️ the pack as the theme. In the other two, choose 🖼️ the pack under Picture pack.
 
+**📤 Share this pack** sends the finished pack, with Claude's details included, to someone else (e.g. by WhatsApp). They load it the same way and don't need Claude or an API key.
+
 Only the host needs the pack. The other phone gets the pictures automatically when the game starts, which takes a few seconds the first time.
 
 ## Play the computer

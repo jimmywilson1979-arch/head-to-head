@@ -773,7 +773,7 @@ function packRow(game) {
   if (pk && game === "tt") h += `<p class="small mut" style="margin:2px 2px 0">${pk.deck ? "Pick 🖼️ " + esc(pk.name) + " as the theme above." : "Add details with Claude to make a Card Clash deck from your pictures."}</p>`;
   if (pk && game === "snap") h += `<p class="small mut" style="margin:6px 2px 0">${pk.pics.length} pictures${pk.pics.length < (PREF.kids ? 31 : 57) ? `. A deck needs ${PREF.kids ? 31 : 57}, so emoji fill the gaps` : ""}.</p>`;
   if (needsDetails && game === "wi") h += `<p class="small mut" style="margin:6px 2px 0">Who Is It? needs Claude to look at the pictures first, so it knows who wears a hat, has long hair and so on.</p>`;
-  h += `<div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap"><button class="iconbtn" data-act="packload">📥 ${pk ? "Load another pack" : "Load a picture pack"}</button>${needsDetails ? `<button class="iconbtn" data-act="packai">✨ Add details with Claude</button>` : ""}</div>`;
+  h += `<div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap"><button class="iconbtn" data-act="packload">📥 ${pk ? "Load another pack" : "Load a picture pack"}</button>${needsDetails ? `<button class="iconbtn" data-act="packai">✨ Add details with Claude</button>` : ""}${pk ? `<button class="iconbtn" data-act="packshare">📤 Share this pack</button>` : ""}</div>`;
   return h;
 }
 function packOverlay(html) {
@@ -807,6 +807,15 @@ function packAI() {
     <input id="pkkey" class="field" type="password" placeholder="sk-ant-…" value="${esc(PACKS.getKey())}" autocomplete="off">
     <p id="pkmsg" class="small" style="min-height:1.3em;margin:8px 0"></p>
     <div class="row" style="gap:8px"><button class="btn alt" data-pk="close">Not now</button><button class="btn green" data-pk="go">Start</button></div>`);
+}
+async function packShare() { // the whole pack, details and all, so someone else can load it without needing Claude
+  const pk = PREF.pack && PACKS.get(PREF.pack); if (!pk) return;
+  const file = new File([JSON.stringify(Object.assign({}, pk, { type: "h2h-pack" }))], (slug(pk.name) || "picture-pack") + "-head-to-head.json", { type: "application/json" });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: pk.name + " for Head to Head" }); return; } catch (e) { if (e && e.name === "AbortError") return; }
+  }
+  const a = document.createElement("a"); a.href = URL.createObjectURL(file); a.download = file.name; document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000); toast("Saved " + file.name + " to your Downloads");
 }
 const pkFile = Object.assign(document.createElement("input"), { type: "file", accept: ".json,application/json" });
 pkFile.addEventListener("change", async () => {
@@ -2056,6 +2065,7 @@ app.addEventListener("click", e => {
     case "wiguessoff": WI.guessing = false; return render();
     case "packload": return pkFile.click();
     case "packai": return packAI();
+    case "packshare": return packShare();
   }
 });
 app.addEventListener("keydown", e => {
