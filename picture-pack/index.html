@@ -50,7 +50,7 @@ a:focus-visible,button:focus-visible,input:focus-visible{outline:3px solid var(-
     <li>Tap <b>Find</b> to search Google Images, then long-press a picture and save it.</li>
     <li>Tap <b>Add</b> and choose the picture you saved.</li>
     <li>When you're done, tap <b>Send pack</b> and send the file to George's tablet.</li>
-    <li>On the tablet, open Letter Quest, go to <b>Pictures</b> and tap <b>Load picture pack</b>.</li>
+    <li>On the tablet, open Letter Quest, go to <b>Pictures</b> and tap <b>Load picture pack</b>. In Memory Pieces, it's in the grown-ups area.</li>
   </ol>
 
   <div class="panel">
@@ -105,14 +105,14 @@ async function loadAll(){
 const putPic = (w, d) => tx("readwrite", s => s.put(d, w)).then(() => { pics[w] = d; });
 const delPic = w => tx("readwrite", s => s.delete(w)).then(() => { delete pics[w]; });
 
-// ---------- shrink a picture to the size the game uses ----------
+// ---------- shrink a picture: big enough to stay sharp as a jigsaw, small enough to send ----------
 function shrink(file){ return new Promise((res, rej) => {
   const url = URL.createObjectURL(file), img = new Image();
   img.onload = () => {
-    const s = 360, c = document.createElement("canvas"), m = Math.min(img.width, img.height);
-    c.width = s; c.height = s;
-    c.getContext("2d").drawImage(img, (img.width - m) / 2, (img.height - m) / 2, m, m, 0, 0, s, s);
-    URL.revokeObjectURL(url); res(c.toDataURL("image/jpeg", 0.75));
+    const k = Math.min(1, 1000 / Math.max(img.width, img.height)), c = document.createElement("canvas");
+    c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+    URL.revokeObjectURL(url); res(c.toDataURL("image/jpeg", 0.82));
   };
   img.onerror = () => { URL.revokeObjectURL(url); rej(); };
   img.src = url;
