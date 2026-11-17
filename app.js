@@ -818,8 +818,8 @@ async function packShare() { // the whole pack, details and all, so someone else
   setTimeout(() => URL.revokeObjectURL(a.href), 4000); toast("Saved " + file.name + " to your Downloads");
 }
 const pkFile = Object.assign(document.createElement("input"), { type: "file", accept: ".json,application/json" });
-pkFile.addEventListener("change", async () => {
-  const f = pkFile.files && pkFile.files[0]; pkFile.value = ""; if (!f) return;
+pkFile.addEventListener("change", () => { const f = pkFile.files && pkFile.files[0]; pkFile.value = ""; if (f) loadPackFile(f); });
+async function loadPackFile(f) {
   packOverlay(`<h2>📥 Loading pictures</h2><p id="pkmsg">Opening the pack…</p>`);
   try {
     const pk = await PACKS.fromFile(f, (n, t) => { const m = document.getElementById("pkmsg"); if (m) m.textContent = `Getting the pictures ready: ${n} of ${t}…`; });
@@ -827,7 +827,7 @@ pkFile.addEventListener("change", async () => {
     packOverlay(`<h2>🖼️ ${esc(pk.name)}</h2><p>${pk.pics.length} pictures are ready on this phone.${pk.tags ? "" : " Symbol Snap can use them now. For Who Is It? and Card Clash, tap <b>✨ Add details with Claude</b>."}</p><button class="btn green" data-pk="close">OK</button>`);
     if (S && (MODE === "host" || MODE === "cpu")) { S.opts = packOpts(Object.assign({}, S.opts)); commit(); } else render();
   } catch (e) { packOverlay(`<h2>That didn't work</h2><p>That file isn't a picture pack. Use the file from the Letter Quest picture page or Pack Builder.</p><button class="btn" data-pk="close">OK</button>`); }
-});
+}
 
 // ----- boards -----
 function boardTTT(c) {
@@ -2083,7 +2083,18 @@ app.addEventListener("input", e => {
 // ===== START =====
 // keep pictures saved on the phone so they appear instantly next time
 if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => { });
+// A pack shared into Head to Head from another app arrives via the service worker; load it as if it was picked
+async function takeSharedPack() {
+  if (!P.has("shared-pack") || !("caches" in window)) return;
+  history.replaceState(null, "", location.pathname);
+  try {
+    const c = await caches.open("h2h-shared"), r = await c.match("shared-pack"); if (!r) return;
+    const name = decodeURIComponent(r.headers.get("x-name") || "pack.json"), blob = await r.blob(); await c.delete("shared-pack");
+    await loadPackFile(new File([blob], name, { type: "application/json" }));
+  } catch (e) { }
+}
 PACKS.refreshList().finally(function boot() {
+  setTimeout(takeSharedPack, 300);
   const j = (P.get("join") || "").toUpperCase().replace(/[^A-Z]/g, "");
   if (j.length === 4) {
     joinCode = j;
