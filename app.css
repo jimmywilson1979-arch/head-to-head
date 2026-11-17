@@ -154,6 +154,20 @@ input { font: inherit; -webkit-user-select: text; user-select: text; }
 .dots .edhit { fill: rgba(0, 0, 0, 0); cursor: pointer; pointer-events: all; }
 .dots .edhit:hover, .dots .edhit:active { fill: rgba(108, 140, 255, .22); }
 .dots .bxl { font: 700 34px "Fredoka", sans-serif; }
+.dotswrap.big { width: min(100%, 640px, 78vh); }
+.dots .ed.pre { stroke: #6b76a8; stroke-width: 7; stroke-linecap: round; }
+.dots .edhl { stroke: rgba(0, 0, 0, 0); stroke-width: 34; stroke-linecap: round; cursor: pointer; pointer-events: stroke; }
+.dots .edhl:hover, .dots .edhl:active { stroke: rgba(108, 140, 255, .25); }
+.dots .bxi { opacity: .9; }
+.seg.decks.dk4 { grid-template-columns: repeat(4, 1fr); }
+.seg.decks.dk4 button { font-size: 12.5px; line-height: 1.35; padding: 8px 2px; }
+.seg.wrap3 button { font-size: 13px; line-height: 1.25; padding: 9px 4px; }
+.segsub { display: block; font-size: 11px; font-weight: 700; opacity: .7; margin-top: 2px; }
+.dtimer { position: relative; height: 22px; margin: -2px auto 10px; max-width: 430px; background: #0e1430; border-radius: 11px; overflow: hidden; }
+.dtimer i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--good); transition: width .2s linear; }
+.dtimer.low i { background: var(--p0); }
+.dtimer.idle i { background: #2a3460; }
+.dtimer span { position: relative; display: block; text-align: center; font-weight: 800; font-size: 13px; line-height: 22px; color: #0b1020; }
 
 /* battleships */
 .bslab { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 14px; color: var(--mut); margin: 0 auto 6px; width: min(100%, 430px); }

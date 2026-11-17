@@ -112,43 +112,7 @@
     return rnd(picks.length ? picks : legal);
   }
 
-  // ===== DOTS AND BOXES ===== (4 x 4 boxes, 5 x 5 dots)
-  const DR = 4, DC = 4, DH = (DR + 1) * DC, DE = DH + DR * (DC + 1);
-  const DBOX = [];
-  for (let r = 0; r < DR; r++) for (let c = 0; c < DC; c++) DBOX.push([r * DC + c, (r + 1) * DC + c, DH + r * (DC + 1) + c, DH + r * (DC + 1) + c + 1]);
-  const EDGE_BOXES = Array.from({ length: DE }, () => []);
-  DBOX.forEach((es, bi) => es.forEach(e => EDGE_BOXES[e].push(bi)));
-  const dSides = (e, bi) => DBOX[bi].reduce((n, x) => n + (e[x] != null ? 1 : 0), 0);
-  function dGiveaway(e, edge) { // how many boxes the other player could then take in a row
-    const e2 = e.slice(); e2[edge] = 1; const taken = new Set(); let n = 0, more = true;
-    while (more) {
-      more = false;
-      for (let bi = 0; bi < DBOX.length; bi++) {
-        if (taken.has(bi)) continue;
-        if (dSides(e2, bi) === 4) { taken.add(bi); continue; }
-        if (dSides(e2, bi) === 3) { const x = DBOX[bi].find(k => e2[k] == null); e2[x] = 0; more = true; }
-      }
-      n = 0; for (let bi = 0; bi < DBOX.length; bi++) if (dSides(e2, bi) === 4 && dSides(e, bi) < 4) n++;
-    }
-    return n;
-  }
-  function dotsAI(S, seat, level) {
-    const e = S.board.e, free = [];
-    for (let i = 0; i < DE; i++) if (e[i] == null) free.push(i);
-    const comp = free.filter(x => EDGE_BOXES[x].some(bi => dSides(e, bi) === 3));
-    const safe = free.filter(x => EDGE_BOXES[x].every(bi => dSides(e, bi) < 2));
-    if (level === "easy") {
-      if (comp.length && Math.random() < 0.6) return rnd(comp);
-      if (safe.length && Math.random() < 0.5) return rnd(safe);
-      return rnd(free);
-    }
-    if (comp.length) return rnd(comp);
-    if (safe.length && (level === "hard" || Math.random() < 0.85)) return rnd(safe);
-    if (level === "medium") return rnd(free);
-    let best = Infinity, picks = [];
-    for (const x of free) { const g = dGiveaway(e, x); if (g < best) { best = g; picks = [x]; } else if (g === best) picks.push(x); }
-    return rnd(picks);
-  }
+  // ===== DOTS AND BOXES ===== now in dots.js (shapes, sizes and rule twists)
 
   // ===== BATTLESHIPS ===== (8 x 8, fleet 4,3,3,2,2)
   const BN = 8, FLEET = [4, 3, 3, 2, 2];
@@ -956,20 +920,7 @@
       },
       ai: (S, seat, level) => c4AI(S.board.slice(), seat, level),
     },
-    dots: {
-      id: "dots", name: "Dots & Boxes", local: true, R: DR, C: DC, H: DH, E: DE,
-      init(S) { S.board = { e: Array(DE).fill(null), box: Array(DR * DC).fill(null), score: [0, 0] }; S.sec = {}; S.turn = S.starter; },
-      waiting: turnWaiting,
-      move(S, seat, mv) {
-        const b = S.board; if (!Number.isInteger(mv) || mv < 0 || mv >= DE || b.e[mv] != null) return false;
-        b.e[mv] = seat; S.last = mv; let k = 0;
-        for (const bi of EDGE_BOXES[mv]) if (b.box[bi] == null && dSides(b.e, bi) === 4) { b.box[bi] = seat; b.score[seat]++; k++; }
-        if (b.box.every(x => x != null)) S.result = { w: b.score[0] === b.score[1] ? "draw" : b.score[0] > b.score[1] ? 0 : 1, line: [] };
-        else if (!k) S.turn = 1 - seat;
-        return k ? "box" : "line";
-      },
-      ai: dotsAI,
-    },
+    dots: { id: "dots", name: "Dots & Boxes", local: true }, // filled in by dots.js
     bs: {
       id: "bs", name: "Battleships", local: false, N: BN, FLEET,
       init(S) { S.board = { stage: "place", ready: [false, false], shots: [Array(BN * BN).fill(null), Array(BN * BN).fill(null)], sunk: [[], []], reveal: null }; S.sec = { 0: null, 1: null }; S.turn = -1; },

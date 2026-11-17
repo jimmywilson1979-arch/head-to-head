@@ -27,7 +27,9 @@ const LEVELS = { easy: "Easy", medium: "Medium", hard: "Hard" };
 // ===== WHO AM I =====
 const ME = { id: ls.get("h2h_pid", null), name: ls.get("h2h_name", "") };
 if (!ME.id) { ME.id = uid(); ls.set("h2h_pid", ME.id); }
-const PREF = Object.assign({ game: "ttt", level: "medium", sound: true, deck: "animals", kids: false, screens: "two", p2: "", pack: null, usePack: false }, ls.get("h2h_pref", {}));
+const PREF = Object.assign({ game: "ttt", level: "medium", sound: true, deck: "animals", kids: false, screens: "two", p2: "", pack: null, usePack: false, dots: null }, ls.get("h2h_pref", {}));
+// Dots & Boxes choices: board shape and size, gold & bomb boxes, no extra go, random start, move timer
+PREF.dots = Object.assign({ shape: "sq", size: "m", bonus: false, noext: false, rstart: false, timer: 0 }, PREF.dots || {});
 // One screen: two people take turns on this phone or tablet. Only games with nothing to hide and one player at a time.
 const ONE_SCREEN = ["ttt", "c4", "dots", "golf", "hm", "cw"];
 const savePref = () => ls.set("h2h_pref", PREF);
@@ -164,7 +166,7 @@ function sendState() { if (T && S) T.send({ t: "state", s: pub(S) }); }
 function newState(game, room) {
   return { sid: uid(), v: 0, room, game, host: ME.id, players: [], seats: [null, null], queue: [], phase: "lobby",
     board: null, sec: {}, turn: 0, starter: 0, result: null, last: null, lastBy: -1, fx: null, moves: 0, round: 0, draws: 0,
-    level: PREF.level, acks: {}, opts: packOpts({ deck: PREF.deck, kids: !!PREF.kids }) };
+    level: PREF.level, acks: {}, opts: packOpts({ deck: PREF.deck, kids: !!PREF.kids, dots: Object.assign({}, PREF.dots) }) };
 }
 // picture pack choices that go into a game's options (the pictures themselves stay in packs.js)
 function packOpts(o) { const pk = PREF.pack && PACKS.get(PREF.pack); return Object.assign(o, { pack: pk ? pk.id : null, usePack: !!(pk && PREF.usePack) }); }
@@ -629,6 +631,7 @@ function renderHome() {
     <p class="label">Pick a game</p>
     ${gamePicker(PREF.game, "data-pickgame", ONE_SCREEN)}
     ${KIDSG.includes(PREF.game) ? `<div class="gap"></div><p class="label">${kidsLabel(PREF.game)}</p>${kidsSeg(PREF.kids, "data-kids")}` : ""}
+    ${PREF.game === "dots" ? dotsOpts(PREF.dots, "data-dotsopt") : ""}
     <p class="small mut" style="margin:10px 2px 0">Greyed-out games keep things secret from the other player, or need you both playing at once, so they need two phones.</p>
   </div>
   <button class="btn" data-act="pass">👥 Start<span class="sub">Pass the phone or tablet between turns</span></button>`;
@@ -648,6 +651,7 @@ function renderHome() {
     ${gamePicker(PREF.game)}
     ${PREF.game === "tt" ? `<div class="gap"></div><p class="label">Card Clash theme</p>${deckPicker(PREF.deck, "data-deck")}` : ""}
     ${KIDSG.includes(PREF.game) ? `<div class="gap"></div><p class="label">${kidsLabel(PREF.game)}</p>${kidsSeg(PREF.kids, "data-kids")}` : ""}
+    ${PREF.game === "dots" ? dotsOpts(PREF.dots, "data-dotsopt") : ""}
     ${packRow(PREF.game)}
   </div>
   <button class="btn" data-act="host">📱 Play a friend<span class="sub">Get a QR code for them to scan</span></button>
@@ -744,7 +748,7 @@ function renderLobby() {
     ${n > 2 ? `<p class="small mut" style="margin:10px 0 0">Winner stays on. Everyone else waits their turn.</p>` : ""}
   </div>
   ${host ? `
-    <div class="card"><p class="label">Game</p>${gamePicker(S.game, "data-setgame")}${S.game === "tt" ? `<div class="gap"></div><p class="label">Theme</p>${deckPicker(S.opts && S.opts.deck, "data-setdeck")}` : ""}${KIDSG.includes(S.game) ? `<div class="gap"></div><p class="label">${kidsLabel(S.game)}</p>${kidsSeg(S.opts && S.opts.kids, "data-setkids")}` : ""}${packRow(S.game)}</div>
+    <div class="card"><p class="label">Game</p>${gamePicker(S.game, "data-setgame")}${S.game === "tt" ? `<div class="gap"></div><p class="label">Theme</p>${deckPicker(S.opts && S.opts.deck, "data-setdeck")}` : ""}${KIDSG.includes(S.game) ? `<div class="gap"></div><p class="label">${kidsLabel(S.game)}</p>${kidsSeg(S.opts && S.opts.kids, "data-setkids")}` : ""}${S.game === "dots" ? dotsOpts(S.opts && S.opts.dots, "data-setdotsopt") : ""}${packRow(S.game)}</div>
     <button class="btn green" data-act="start" ${n < 2 ? "disabled" : ""}>${n < 2 ? `<span class="wait">⏳</span> Waiting for someone to join` : "▶ Start the game"}</button>` : ""}
   <div class="foot"><button class="iconbtn" data-act="leave">Leave</button></div>`;
 }
@@ -854,28 +858,93 @@ function boardC4(c) {
   return `<div class="c4wrap"><div class="c4arrows p${S.turn}">${arrows}</div><div class="c4 ${c.myTurn ? "can" : ""}">${cells}</div></div>`;
 }
 function boardDots(c) {
-  const g = GAMES.dots, b = S.board, R = g.R, C = g.C, sp = 80, m = 22, Wd = C * sp + 2 * m, Ht = R * sp + 2 * m;
+  const b = S.board, g = GAMES.dots.geo(b.lay), sc = 80, m = 26, Wd = g.w * sc + 2 * m, Ht = g.h * sc + 2 * m;
+  const X = i => (m + g.pts[i][0] * sc).toFixed(1), Y = i => (m + g.pts[i][1] * sc).toFixed(1);
+  const fs = Math.min(40, Math.max(18, g.inr * sc * .85));
   let boxes = "", lines = "", hits = "", dots = "";
-  b.box.forEach((v, bi) => {
-    if (v == null) return;
-    const r = Math.floor(bi / C), col = bi % C, x = m + col * sp, y = m + r * sp;
-    const who = nameOf(S.seats[v]);
-    boxes += `<g class="p${v}"><rect x="${x + 5}" y="${y + 5}" width="${sp - 10}" height="${sp - 10}" rx="8" style="fill:var(--c)" opacity=".3"/><text x="${x + sp / 2}" y="${y + sp / 2 + 11}" text-anchor="middle" class="bxl" style="fill:var(--c)">${esc((who || "?")[0].toUpperCase())}</text></g>`;
+  g.cells.forEach((cell, ci) => {
+    const v = b.box[ci], cx = m + cell.cx * sc, cy = m + cell.cy * sc, val = b.val[ci];
+    const icon = val > 1 ? "⭐" : val < 0 ? "💣" : "";
+    if (v == null) { if (icon) boxes += `<text x="${cx.toFixed(1)}" y="${(cy + fs * .36).toFixed(1)}" text-anchor="middle" class="bxi" style="font-size:${(fs * .95).toFixed(0)}px">${icon}</text>`; return; }
+    const poly = cell.p.map(i => X(i) + "," + Y(i)).join(" "), who = nameOf(S.seats[v]);
+    boxes += `<g class="p${v}"><polygon points="${poly}" style="fill:var(--c)" opacity="${val < 0 ? .14 : .3}" stroke="var(--c)" stroke-opacity=".0"/>`
+      + `<text x="${cx.toFixed(1)}" y="${(cy + fs * .34 - (icon ? fs * .28 : 0)).toFixed(1)}" text-anchor="middle" class="bxl" style="fill:var(--c);font-size:${fs.toFixed(0)}px">${esc((who || "?")[0].toUpperCase())}</text>`
+      + (icon ? `<text x="${cx.toFixed(1)}" y="${(cy + fs * .62).toFixed(1)}" text-anchor="middle" style="font-size:${(fs * .55).toFixed(0)}px">${icon}</text>` : "") + `</g>`;
   });
-  for (let e = 0; e < g.E; e++) {
-    let x1, y1, x2, y2;
-    if (e < g.H) { const r = Math.floor(e / C), col = e % C; x1 = m + col * sp; y1 = m + r * sp; x2 = x1 + sp; y2 = y1; }
-    else { const k = e - g.H, r = Math.floor(k / (C + 1)), col = k % (C + 1); x1 = m + col * sp; y1 = m + r * sp; x2 = x1; y2 = y1 + sp; }
-    const v = b.e[e];
-    if (v != null) lines += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" class="ed p${v} ${c.animate && e === S.last ? "ednew" : ""}" style="stroke:var(--c)"/>`;
+  g.ed.forEach(([p, q], e) => {
+    const x1 = X(p), y1 = Y(p), x2 = X(q), y2 = Y(q), v = b.e[e];
+    if (v === 0 || v === 1) lines += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" class="ed p${v} ${c.animate && e === S.last ? "ednew" : ""}" style="stroke:var(--c)"/>`;
+    else if (v === 2) lines += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" class="ed pre"/>`;
     else {
       lines += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" class="edfree ${c.myTurn ? "on" : ""}"/>`;
-      if (c.myTurn) { const v = x1 === x2, s = 14, t = 19; hits += v ? `<rect data-mv="${e}" class="edhit" x="${x1 - t}" y="${y1 + s}" width="${2 * t}" height="${sp - 2 * s}" rx="10"/>` : `<rect data-mv="${e}" class="edhit" x="${x1 + s}" y="${y1 - t}" width="${sp - 2 * s}" height="${2 * t}" rx="10"/>`; }
+      if (c.myTurn) { // a fat invisible line to tap, pulled in from the dots so neighbouring lines don't overlap
+        const ax = +x1, ay = +y1, bx = +x2, by = +y2, k = .2;
+        hits += `<line data-mv="${e}" class="edhl" x1="${(ax + (bx - ax) * k).toFixed(1)}" y1="${(ay + (by - ay) * k).toFixed(1)}" x2="${(bx + (ax - bx) * k).toFixed(1)}" y2="${(by + (ay - by) * k).toFixed(1)}"/>`;
+      }
     }
-  }
-  for (let r = 0; r <= R; r++) for (let col = 0; col <= C; col++) dots += `<circle cx="${m + col * sp}" cy="${m + r * sp}" r="7.5" class="dt"/>`;
-  return `<div class="dotswrap"><svg class="dots" viewBox="0 0 ${Wd} ${Ht}">${boxes}${lines}${dots}${hits}</svg></div>`;
+  });
+  g.pts.forEach((pt, i) => dots += `<circle cx="${X(i)}" cy="${Y(i)}" r="7.5" class="dt"/>`);
+  const big = g.cells.length > 30 || g.w > 7.5;
+  return `<div class="dotswrap ${big ? "big" : ""}"><svg class="dots" viewBox="0 0 ${Wd.toFixed(0)} ${Ht.toFixed(0)}">${boxes}${lines}${dots}${hits}</svg></div>
+  ${b.bonus ? `<p class="center small mut" style="margin:8px 0 0">⭐ gold box = 3 points · 💣 bomb = −1</p>` : ""}`;
 }
+// "Box! Go again", "⭐ Gold box! +3 and go again", "💣 Bomb! −1"…
+function dotsGot(mine) {
+  const b = S.board, x = b.got || { k: 1, v: 1, gold: 0, bomb: 0 }, again = !b.noext;
+  const what = x.bomb && !x.gold ? `💣 Bomb! ${x.v < 0 ? "−" + Math.abs(x.v) : x.v}` : x.gold ? `⭐ Gold box! +${x.v}` : x.k > 1 ? `${x.k} boxes!` : "Box!";
+  if (mine) return what + (again ? " Go again" : "");
+  return (x.bomb && !x.gold ? "They got a bomb" : x.gold ? "They got a gold box" : "They got a box") + (again ? " and go again" : "");
+}
+// ----- Dots & Boxes options: board, size, twists, timer -----
+function dotsOpts(o, attr) {
+  const D = GAMES.dots, cur = Object.assign({}, D.DEFAULTS, o || {}), sized = !!D.SIZES[cur.shape];
+  const btn = (k, v, label, on) => `<button class="${on ? "on" : ""}" ${attr}="${k}:${v}">${label}</button>`;
+  const dims = sz => { const d = D.SIZES[cur.shape][sz]; if (cur.shape === "sq") return `${d[0]}×${d[1]}`; return `${D.geo(cur.shape + "-" + sz).cells.length}`; };
+  let h = `<div class="gap"></div><p class="label">Board</p><div class="seg decks dk4">${D.SHAPES.map(sh => btn("shape", sh.id, `${sh.icon}<br>${sh.name}`, cur.shape === sh.id)).join("")}</div>`;
+  if (sized) h += `<div class="gap"></div><p class="label">Size</p><div class="seg">${Object.keys(D.SIZE_NAMES).map(sz => btn("size", sz, `${D.SIZE_NAMES[sz]}<span class="segsub">${dims(sz)}${cur.shape === "sq" ? "" : " cells"}</span>`, cur.size === sz)).join("")}</div>`;
+  h += `<div class="gap"></div><p class="label">Twists <span class="mut" style="text-transform:none;letter-spacing:0">(tap to turn on)</span></p><div class="seg wrap3">${btn("bonus", cur.bonus ? 0 : 1, "⭐💣 Gold & bombs", cur.bonus)}${btn("noext", cur.noext ? 0 : 1, "🚫 No extra go", cur.noext)}${btn("rstart", cur.rstart ? 0 : 1, "🎲 Random start", cur.rstart)}</div>`;
+  h += `<div class="gap"></div><p class="label">Time for each go</p><div class="seg">${[0, 10, 20].map(t => btn("timer", t, t ? `⏱️ ${t} sec` : "No limit", +cur.timer === t)).join("")}</div>`;
+  const tips = [];
+  if (cur.bonus) tips.push("Gold boxes are worth 3, bombs cost you a point");
+  if (cur.noext) tips.push("finishing a box ends your go");
+  if (cur.rstart) tips.push("some lines are drawn before you start");
+  if (+cur.timer) tips.push(`run out of time and a random line is drawn for you`);
+  if (tips.length) h += `<p class="small mut" style="margin:8px 2px 0">${tips.join("; ").replace(/^./, x => x.toUpperCase())}.</p>`;
+  return h;
+}
+function dotsOptTap(kv, live) {
+  const i = kv.indexOf(":"), k = kv.slice(0, i), raw = kv.slice(i + 1);
+  const v = k === "shape" || k === "size" ? raw : k === "timer" ? +raw : raw === "1";
+  PREF.dots = Object.assign({}, PREF.dots, { [k]: v }); savePref();
+  if (!live) return renderHome();
+  if (MODE === "host" || MODE === "cpu") { S.opts = Object.assign({}, S.opts, { dots: Object.assign({}, PREF.dots) }); if (S.phase === "over") nextRound(); commit(); }
+}
+// ----- move timer: every phone shows the countdown; the host (or this phone, against the computer) draws a random line when it runs out -----
+const DTM = { k: "", t0: 0 };
+function dotsTimerBar() {
+  const b = S.board; if (!b || !b.tl || S.phase !== "play") return "";
+  const left = dotsLeft(), cpu = S.seats[S.turn] === "cpu";
+  return `<div class="dtimer ${cpu ? "idle" : ""} ${left < 3500 && !cpu ? "low" : ""}"><i id="dtbar" style="width:${cpu ? 100 : (left / (b.tl * 10)).toFixed(1)}%"></i><span id="dtsec">${cpu ? "" : Math.ceil(left / 1000) + "s"}</span></div>`;
+}
+function dotsLeft() {
+  const k = S.sid + ":" + S.round + ":" + S.moves;
+  if (DTM.k !== k) { DTM.k = k; DTM.t0 = Date.now(); }
+  return Math.max(0, S.board.tl * 1000 - (Date.now() - DTM.t0));
+}
+setInterval(() => {
+  if (!S || S.game !== "dots" || S.phase !== "play" || !S.board || !S.board.tl || (MODE !== "host" && MODE !== "guest" && MODE !== "cpu")) return;
+  const left = dotsLeft(), cpu = S.seats[S.turn] === "cpu";
+  const bar = document.getElementById("dtbar"), sec = document.getElementById("dtsec");
+  if (bar && !cpu) { bar.style.width = (left / (S.board.tl * 10)).toFixed(1) + "%"; bar.parentNode.classList.toggle("low", left < 3500); }
+  if (sec && !cpu) sec.textContent = Math.ceil(left / 1000) + "s";
+  if (cpu || (MODE !== "host" && MODE !== "cpu")) return;
+  const grace = MODE === "host" && S.seats[S.turn] !== ME.id ? 1200 : 0; // allow for the other phone's move still being on its way
+  if (Date.now() - DTM.t0 < S.board.tl * 1000 + grace) return;
+  const free = []; S.board.e.forEach((v, i) => { if (v == null) free.push(i); });
+  if (!free.length) return;
+  const who = S.seats[S.turn], mv = free[Math.floor(Math.random() * free.length)];
+  if (applyMove(who, mv, S.moves)) { toast(`⏱️ Time's up! A random line was drawn for ${isMe(who) ? "you" : nameOf(who)}`); afterMove(); commit(); }
+}, 200);
 function bsGrid(cellFn, cls = "") {
   const N = GAMES.bs.N; let h = "";
   for (let i = 0; i < N * N; i++) { const x = cellFn(i); h += `<button class="${x.c || ""}" ${x.mv != null ? `data-fire="${x.mv}"` : ""}>${x.h || ""}</button>`; }
@@ -1548,7 +1617,7 @@ function renderGame() {
     let sub = "";
     if (S.phase === "play") sub = w ? (simul ? "choosing…" : id === "cpu" ? "thinking…" : "to play") : simul ? "ready ✓" : "";
     else if (over && S.result.w === seat) sub = "wins!";
-    if (S.game === "dots" && !(over && S.result.w === seat)) sub = `${S.board.score[seat]} box${S.board.score[seat] === 1 ? "" : "es"}`;
+    if (S.game === "dots" && !(over && S.result.w === seat)) { const n = S.board.score[seat]; sub = S.board.bonus ? `${n} point${n === 1 || n === -1 ? "" : "s"}` : `${n} box${n === 1 ? "" : "es"}`; }
     if (S.game === "golf" && S.phase === "play") { const bl = S.board.balls[seat]; sub = bl.in ? (bl.gaveUp ? "picked up" : `in ✓ ${bl.strokes}`) : `${bl.strokes} shot${bl.strokes === 1 ? "" : "s"}`; }
     if (S.game === "tt" && !(over && S.result.w === seat)) sub = `${S.board.count[seat]} card${S.board.count[seat] === 1 ? "" : "s"}`;
     if (WORDG.includes(S.game) && S.board && !(over && S.result.w === seat)) { const n = S.board.score[seat]; sub = S.game === "ws" ? `${n} found` : `${n} word${n === 1 ? "" : "s"}`; }
@@ -1574,7 +1643,7 @@ function renderGame() {
       cls = "me";
       const wiPick = S.game === "wi" && S.board.stage === "pick";
       status = bsPlace ? "Place your fleet" : wiPick ? "Choose your mystery person" : S.game === "rps" ? "Pick your move" : S.game === "tt" ? "Pick a stat" : S.game === "wi" ? "Your turn: ask a question" : S.game === "golf" ? "Your shot" : S.game === "hm" ? (HM.solving ? "Fill in the word" : "Your turn: pick a letter") : S.game === "ws" ? "Find the words! 🔎" : S.game === "cw" ? "Your turn: answer a clue" : "Your turn";
-      if (S.game === "dots" && S.lastBy === me && S.fx === "box") sub = "Box! Go again";
+      if (S.game === "dots" && S.lastBy === me && S.fx === "box") sub = dotsGot(true);
       if (S.game === "golf" && S.board.balls[1 - me].in && !S.board.balls[1 - me].gaveUp) sub = `${esc(nameOf(S.seats[1 - me]))} is in with ${S.board.balls[1 - me].strokes}. Your shot`;
       if (S.game === "bs" && S.last && S.last.seat !== me) sub = S.last.sunk ? "They sank your ship!" : S.last.hit ? "They hit you!" : "They missed";
     } else if (S.game === "ws") status = "Find the words! 🔎";
@@ -1587,14 +1656,14 @@ function renderGame() {
     else if (S.game === "golf" && me >= 0 && S.board.balls[me].in) { status = "You're in! ⛳"; cls = "me"; sub = `${esc(nameOf(S.seats[1 - me]))} is still playing this hole`; }
     else status = S.game === "tt" ? `${esc(nameOf(S.seats[S.turn]))} is choosing…` : `${esc(nameOf(S.seats[S.turn]))}'s turn`;
     if (!myTurn && S.game === "bs" && S.last && S.last.seat === me) sub = S.last.sunk ? "You sank a ship! 🚢" : S.last.hit ? "Hit! 💥" : "Miss";
-    if (S.game === "dots" && !myTurn && S.lastBy >= 0 && S.lastBy !== me && S.fx === "box" && me >= 0) sub = "They got a box and go again";
+    if (S.game === "dots" && !myTurn && S.lastBy >= 0 && S.lastBy !== me && S.fx === "box" && me >= 0) sub = dotsGot(false);
     if (pending && MODE === "guest" && !g.local) sub = "Sending…";
     if (me < 0) sub = `You're watching${S.queue.indexOf(ME.id) === 0 ? ". You're next up!" : ""}`;
   } else if (over) {
     if (S.result.w === "draw") status = "It's a draw! 🤝";
     else if (isMe(S.seats[S.result.w])) { status = "You win! 🎉"; cls = "me"; }
     else status = `${esc(nameOf(S.seats[S.result.w]))} wins!`;
-    if (S.game === "dots") sub = `Boxes ${S.board.score[0]} – ${S.board.score[1]}`;
+    if (S.game === "dots") sub = `${S.board.bonus ? "Points" : "Boxes"} ${S.board.score[0]} – ${S.board.score[1]}`;
     if (S.game === "rps") sub = `${S.board.score[0]} – ${S.board.score[1]}`;
     if (S.game === "bs") sub = "Every ship sunk";
     if (S.game === "wi" && S.board.reveal) sub = `${esc(nameOf(S.seats[0]))} was ${esc(wiName(S.board.reveal[0]))}, ${esc(nameOf(S.seats[1]))} was ${esc(wiName(S.board.reveal[1]))}`;
@@ -1627,7 +1696,7 @@ function renderGame() {
       ${me >= 0 || host ? `<button class="btn green" data-act="again">🔁 Play again</button>` : `<p class="center mut">Waiting for the next game…</p>`}
       ${MODE === "host" ? `<button class="btn" data-act="tolobby">🎮 Choose another game</button>` : ""}
       ${MODE === "guest" ? `<button class="btn" data-act="opensuggest">💡 Suggest another game</button>` : ""}
-      ${MODE === "cpu" ? `<div class="card"><p class="label">Switch game</p>${gamePicker(S.game, "data-setgame", S.pass ? ONE_SCREEN : null)}${S.game === "tt" ? `<div class="gap"></div><p class="label">Card Clash theme</p>${deckPicker(S.opts && S.opts.deck, "data-setdeck")}` : ""}${KIDSG.includes(S.game) ? `<div class="gap"></div><p class="label">${kidsLabel(S.game)}</p>${kidsSeg(S.opts && S.opts.kids, "data-setkids")}` : ""}${MODE === "cpu" && !S.pass ? `<div class="gap"></div><p class="label">Computer level</p>${levelSeg(S.level, "data-setlevel")}` : ""}${MODE === "cpu" && !S.pass ? packRow(S.game) : ""}</div>` : ""}
+      ${MODE === "cpu" ? `<div class="card"><p class="label">Switch game</p>${gamePicker(S.game, "data-setgame", S.pass ? ONE_SCREEN : null)}${S.game === "tt" ? `<div class="gap"></div><p class="label">Card Clash theme</p>${deckPicker(S.opts && S.opts.deck, "data-setdeck")}` : ""}${KIDSG.includes(S.game) ? `<div class="gap"></div><p class="label">${kidsLabel(S.game)}</p>${kidsSeg(S.opts && S.opts.kids, "data-setkids")}` : ""}${S.game === "dots" ? dotsOpts(S.opts && S.opts.dots, "data-setdotsopt") : ""}${MODE === "cpu" && !S.pass ? `<div class="gap"></div><p class="label">Computer level</p>${levelSeg(S.level, "data-setlevel")}` : ""}${MODE === "cpu" && !S.pass ? packRow(S.game) : ""}</div>` : ""}
     </div>`;
   }
 
@@ -1635,12 +1704,13 @@ function renderGame() {
   const draws = S.draws ? `<div class="center small mut" style="margin-top:-4px;margin-bottom:8px">${S.draws} draw${S.draws > 1 ? "s" : ""}</div>` : "";
 
   app.innerHTML = `
-  <div class="top"><span class="t">${esc(g.name)}${(g.word || g.kidsOpt) && S.board && S.board.kids ? ` <span class="small mut">· Kids</span>` : ""}${MODE === "cpu" ? ` <span class="small mut">· ${S.pass ? "One screen" : LEVELS[S.level]}</span>` : ""}</span><span class="row" style="flex:none;gap:6px">${gamesBtn()}${MODE === "host" ? `<button class="iconbtn" data-act="qr">${showQR ? "Hide QR" : "📱 Join QR"}</button>` : ""}${soundBtn()}</span></div>
+  <div class="top"><span class="t">${esc(g.name)}${(g.word || g.kidsOpt) && S.board && S.board.kids ? ` <span class="small mut">· Kids</span>` : ""}${S.game === "dots" && S.board && S.board.lay ? ` <span class="small mut">· ${esc(GAMES.dots.layName(S.board.lay).split(" · ")[0])}</span>` : ""}${MODE === "cpu" ? ` <span class="small mut">· ${S.pass ? "One screen" : LEVELS[S.level]}</span>` : ""}</span><span class="row" style="flex:none;gap:6px">${gamesBtn()}${MODE === "host" ? `<button class="iconbtn" data-act="qr">${showQR ? "Hide QR" : "📱 Join QR"}</button>` : ""}${soundBtn()}</span></div>
   ${connBanner()}${suggestBanner()}${suggestPanel()}
   ${MODE === "host" && showQR ? inviteBlock() : ""}
   <div class="bar">${chip(0, "")}<div class="score"><span><b>${w0}</b> – <b>${w1}</b></span></div>${chip(1, "r")}</div>
   ${draws}
   <div class="status ${cls}">${status}${sub ? `<span class="sub">${sub}</span>` : ""}</div>
+  ${S.game === "dots" ? dotsTimerBar() : ""}
   ${board}
   ${after}
   ${queue}
@@ -1981,7 +2051,7 @@ window.addEventListener("pointerdown", e => {
 
 // ===== TAPS =====
 app.addEventListener("click", e => {
-  const el = e.target.closest("[data-usepack],[data-pickpack],[data-suggest],[data-act],[data-mv],[data-fire],[data-rps],[data-tt],[data-wiask],[data-wiguess],[data-deck],[data-setdeck],[data-pickgame],[data-setgame],[data-level],[data-setlevel],[data-kick],[data-key],[data-cwclue],[data-cwcell],[data-kids],[data-setkids],[data-flag]");
+  const el = e.target.closest("[data-usepack],[data-pickpack],[data-suggest],[data-act],[data-mv],[data-fire],[data-rps],[data-tt],[data-wiask],[data-wiguess],[data-deck],[data-setdeck],[data-pickgame],[data-setgame],[data-level],[data-setlevel],[data-kick],[data-key],[data-cwclue],[data-cwcell],[data-kids],[data-setkids],[data-flag],[data-dotsopt],[data-setdotsopt]");
   if (!el) return;
   const d = el.dataset;
   if (d.usepack != null || d.pickpack) {
@@ -1999,6 +2069,7 @@ app.addEventListener("click", e => {
   if (d.key) return wordKey(d.key);
   if (d.cwclue != null) { CW.sel = Number(d.cwclue); CW.typed = []; return render(); }
   if (d.cwcell != null) return cwTapCell(Number(d.cwcell));
+  if (d.dotsopt || d.setdotsopt) return dotsOptTap(d.dotsopt || d.setdotsopt, !!d.setdotsopt);
   if (d.kids != null) { PREF.kids = d.kids === "1"; savePref(); return renderHome(); }
   if (d.setkids != null) { if (MODE === "host" || MODE === "cpu") { PREF.kids = d.setkids === "1"; savePref(); S.opts = Object.assign({}, S.opts, { kids: PREF.kids }); if (S.phase === "over") nextRound(); commit(); } return; }
   if (d.wiask != null) { WI.guessing = false; return myMove({ ask: Number(d.wiask) }); }

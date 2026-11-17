@@ -7,7 +7,12 @@ Phone vs phone games. One phone starts a game and shows a QR code, everyone else
 ## Games
 - **Noughts & Crosses**
 - **Connect 4**
-- **Dots & Boxes** – 4×4 boxes. Finish a box and you go again.
+- **Dots & Boxes** – finish a box and you go again. Pick the board and the twists before you start (on the home page, in the lobby, or after a game):
+  - **Board:** Squares, Triangles (3 lines a box, so fast and chaotic), Hexagons (6 lines a box, slow and tactical), or a shaped board: Heart, Christmas tree, Donut (a hole in the middle) or Cross.
+  - **Size** (Squares, Triangles, Hexagons): Quick, Normal, Big or Marathon (8×8 squares).
+  - **Twists:** ⭐💣 Gold & bombs (gold boxes are worth 3, bombs cost you a point, so sometimes you'd rather they took it), 🚫 No extra go (finishing a box ends your go), 🎲 Random start (about a quarter of the lines drawn in grey before you start, never leaving a box one line from done).
+  - **Time for each go:** no limit, 10 or 20 seconds. Run out and a random line is drawn for you.
+  - Hard computer plays the proper endgame: it counts the chains and loops, and hands back the last 2 boxes of a chain (4 of a loop) when that keeps it in control. All the Dots & Boxes code is in `dots.js`.
 - **Battleships** – 8×8, ships of 4, 3, 3, 2, 2. Shuffle your fleet until you're happy, press Ready, then take turns firing. Your ships stay on your phone; the other player never sees them.
 - **Rock Paper Scissors** – both pick at the same time, first to 3. Picks are hidden until both are in.
 - **Card Clash** (Top Trumps style) – the deck is split between you. Whoever's turn it is picks a stat on their top card; higher wins both cards. A draw puts both cards in the middle for the next winner. Win every card, or have the most after 30 rounds. Themes: **Animals** (32 cards), **Dinosaurs** (24), **Space** (24), **Countries** (30, including Wales, England and Scotland), **Sea life** (24) and **Christmas** (26, just for fun). Every card has its own storybook picture (made in Gemini, in `img/cards/`), and Countries uses real flags. More themes plug into `DECKS` in `games.js`.
